@@ -13,6 +13,19 @@ set -Eeuo pipefail
 : "${STORAGE_ACCESS_KEY_ID:?}" "${STORAGE_SECRET_ACCESS_KEY:?}"
 : "${TEST_STORAGE_BUCKET:?}" "${E2E_STORAGE_BUCKET:?}"
 
+# Registries answer 5xx now and then; a pull that fails on the first try is not a
+# reason to fail the whole run, so each image gets a few attempts.
+pull() {
+  for attempt in 1 2 3 4 5; do
+    docker pull -q "$1" >/dev/null && return 0
+    echo "pull of $1 failed (attempt $attempt); retrying" >&2
+    sleep $((attempt * 5))
+  done
+  return 1
+}
+pull quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+pull quay.io/minio/mc:latest
+
 docker run -d --name minio -p 9000:9000 \
   -e MINIO_ROOT_USER="$STORAGE_ACCESS_KEY_ID" \
   -e MINIO_ROOT_PASSWORD="$STORAGE_SECRET_ACCESS_KEY" \
