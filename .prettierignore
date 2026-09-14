@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+package-lock.json
+
+# Prose documentation is hand-authored (tables, Mermaid blocks, deliberate
+# line breaks) — not reformatted by a code formatter.
+docs/
+documentation.md
