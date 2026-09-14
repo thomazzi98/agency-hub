@@ -122,3 +122,104 @@ test.describe('cross-cutting UI states', () => {
     await expect(page.getByText(projectName)).toHaveCount(0);
   });
 });
+
+test.describe('pagination and layout', () => {
+  test.setTimeout(120_000);
+
+  test('a list past one page is walked with the pager, not truncated', async ({
+    page,
+  }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const prefix = unique('Pag', testInfo);
+
+    // One more than a page, created through the API with this browser's own session:
+    // the screen under test is the list, not twenty-one trips through the form.
+    for (let index = 1; index <= 21; index += 1) {
+      const response = await page.request.post('/api/companies', {
+        data: { name: `${prefix} ${String(index).padStart(2, '0')}` },
+      });
+      expect(response.status()).toBe(201);
+    }
+
+    await page.goto('/empresas');
+    await page.getByLabel('Buscar').fill(prefix);
+    await page.getByRole('button', { name: 'Buscar' }).click();
+
+    const pager = page.getByRole('navigation', { name: 'Paginação' });
+    await expect(pager.getByText('21 resultados')).toBeVisible();
+    await expect(pager.getByText('Página 1 de 2')).toBeVisible();
+    await expect(page.getByRole('listitem')).toHaveCount(20);
+    await expect(pager.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+
+    await pager.getByRole('button', { name: 'Próxima' }).click();
+    await expect(pager.getByText('Página 2 de 2')).toBeVisible();
+    await expect(page.getByRole('listitem')).toHaveCount(1);
+    await expect(pager.getByRole('button', { name: 'Próxima' })).toBeDisabled();
+
+    // Changing the filter goes back to the first page rather than pointing past the end.
+    await page.getByLabel('Situação').selectOption('all');
+    await expect(pager.getByText('Página 1 de 2')).toBeVisible();
+
+    // What the screen can never send, a hand-edited address can: a bad page is refused
+    // with the field named, and an oversized page is capped rather than served
+    // unbounded or refused (22-acceptance-criteria.md #30).
+    for (const bad of ['page=0', 'page=abc', 'pageSize=0']) {
+      const response = await page.request.get(`/api/companies?${bad}`);
+      expect(response.status(), bad).toBe(400);
+      const { error } = await response.json();
+      expect(error.code, bad).toBe('validation_error');
+      expect(error.details[0].field, bad).toBe(bad.split('=')[0]);
+    }
+    const capped = await page.request.get(`/api/companies?pageSize=10000&search=${prefix}`);
+    expect(capped.status()).toBe(200);
+    expect((await capped.json()).meta).toMatchObject({ pageSize: 100, total: 21 });
+  });
+
+  test('no screen scrolls sideways on a phone', async ({ page }, testInfo) => {
+    // The nav strip scrolls within itself by design; the page itself never may
+    // (12-ui-ux-guidelines.md#mobile-first). Only meaningful at a phone width.
+    test.skip(testInfo.project.name !== 'mobile', 'phone viewport only');
+
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await page.goto('/empresas/nova');
+    await page.getByLabel('Nome').fill(companyName);
+    await page.getByRole('button', { name: 'Criar' }).click();
+    await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
+
+    for (const path of [
+      '/',
+      '/empresas',
+      '/projetos',
+      '/projetos/novo',
+      '/calendario',
+      '/publicacoes',
+      '/arquivos',
+      '/pendencias',
+      '/campanhas',
+      '/topicos',
+      '/notificacoes',
+      '/sessoes',
+      '/usuarios',
+      '/usuarios/novo',
+      '/exclusoes',
+      '/identidade-visual',
+      '/backup',
+    ]) {
+      await page.goto(path);
+      await expect(page.locator('main h1').first()).toBeVisible();
+      // Screens with a company selector show their real content once one is chosen.
+      const selector = page.getByLabel('Empresa').first();
+      if ((await selector.count()) > 0) {
+        await expect(selector.locator('option', { hasText: companyName }))
+          .toHaveCount(1, { timeout: 3000 })
+          .then(() => selector.selectOption({ label: companyName }))
+          .catch(() => undefined);
+      }
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `${path} overflows by ${overflow}px`).toBeLessThanOrEqual(0);
+    }
+  });
+});
