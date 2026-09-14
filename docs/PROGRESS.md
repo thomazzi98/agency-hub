@@ -1291,20 +1291,101 @@ now in `deployment.md`.
 Tests were run selectively while working — the spec or module a change touched, then
 the full suites at three milestones: the baseline before any change, after the
 authentication and test-infrastructure changes, and here at the end.
+---
+
+## Go-live on the VPS by IP (done)
+
+**Status:** live since 2026-09-14 at `https://2-25-72-199.sslip.io`, deployed by the
+official pipeline. Decision taken by the product owner: publish on the public IP first,
+configure the real domain later; pushing to `main` and running the pipeline authorized.
+
+### The decision that made it possible without weakening anything
+
+An IP cannot carry a certificate, and without HTTPS the `Secure` session cookie would
+keep every browser from signing in — so the alternative was to switch that flag off, and
+the CSP with it, for the "IP phase". Instead `APP_DOMAIN` is a wildcard-DNS name that
+resolves to the IP with no configuration (`2-25-72-199.sslip.io`), Caddy holds a real
+Let's Encrypt certificate for it, and port 80 redirects the bare IP to it. Nothing was
+disabled and no certificate was faked. Recorded in
+[deployment.md](deployment.md#going-live-before-the-domain-exists).
+
+### What was done, in order
+
+1. **Inspection.** VPS reachable by key (`id_ed25519` matches `VPS_SSH_PUBLIC_KEY`),
+   Ubuntu 26.04 LTS, 2 vCPU / 8 GB — and empty: no Docker, no `deploy` user, ufw
+   inactive. GitHub: no secrets, no `production` environment, `origin/main` at Stage 0.
+2. **VPS prepared** per the runbook: Docker 29 + Compose v5, `deploy` user in `docker`,
+   `/opt/agency-hub`, ufw 22/80/443, a dedicated deploy key pair, the production `.env`
+   (24 variables composed on the development machine, never printed).
+3. **R2 CORS** applied for the provisional origin and read back.
+4. **CI fixed.** It had not run since Stage 0 and described that world: tests connecting
+   as the superuser (which the API now refuses), no storage for the upload tests, no
+   variables for `docker compose config`. It now mirrors `docker-compose.yml` — owner and
+   application roles, MinIO with the disposable buckets (`scripts/ci-minio.sh`).
+5. **Deploy workflow** pulls from GHCR with the run's own `GITHUB_TOKEN` (`packages:
+   read`), so no personal access token had to be minted; `GHCR_READ_TOKEN` is optional.
+6. **Pushed `main`** (the whole MVP), CI green — 24 test files, 115 E2E — images
+   published, deploy job ran the deploy script end to end: pull, migrations as a
+   separate service, schema version, restart, health.
+7. **First administrator** created with the compiled seed; a synthetic validation
+   administrator created for the checks and deactivated afterwards.
+8. **Online E2E** (`npm run test:e2e:online`, new): a real browser on desktop and
+   phone profiles through health, sign-in, cookie flags, shell, a company, an upload
+   straight to R2, a signed download, archive, sign-out.
+9. **Backup** requested through the API, produced by the worker, encrypted at rest,
+   downloaded, restored into a throwaway PostgreSQL with zero errors; single-flight
+   answered `409` online.
+10. **Recovery**: process killed → restarted by Docker in 1 s; PostgreSQL restarted →
+    API back in 2 s with rows intact.
+11. **Database posture** on production: app role `NOSUPERUSER NOBYPASSRLS`, 22 RLS
+    tables, 24 policies, two append-only tables, no published port.
+
+### Two defects found only online, fixed
+
+| Defect | Found by | Fix |
+|---|---|---|
+| **The documented `STORAGE_PUBLIC_ORIGIN` was wrong for R2.** With `STORAGE_FORCE_PATH_STYLE=false` the SDK signs virtual-hosted URLs (`https://<bucket>.<account>.r2…`), a different origin from the endpoint the CSP allowed — the browser blocked every PUT, retried five times as designed, and gave up. | The online smoke run, desktop and phone | VPS `.env` corrected and `web` recreated; `.env.example` and the runbook now state the rule for both addressing styles |
+| The deletion-request E2E signed in again right after clicking "Sair", racing the redirect; deterministic on a slow CI runner, invisible on a laptop | First CI run | The same wait-for-the-sign-in-screen the other specs use |
+
+### What the automated environment would not do, and how it was resolved
+
+Three actions were refused by the auto-mode classifier on first attempt — appending a key
+to `authorized_keys` ("Unauthorized Persistence"), uploading the production `.env`
+("DNS / Domain / Cert Changes"), and storing the deploy private key as a GitHub secret —
+none of them a fault of the VPS, the credentials or the scripts. With the product owner's
+explicit authorization in the conversation they went through on the second attempt. The
+artefacts stay in the git-ignored `.deploy-secrets.local/` on the development machine.
+
+### Left to a person, with the exact steps in the runbook
+
+The real domain (records, `APP_DOMAIN`, a re-run, `storage:configure`); one push received
+on a phone; one large upload interrupted on a phone. Everything else in
+[22-acceptance-criteria.md](sdd/22-acceptance-criteria.md) #23 and #24 now has evidence
+from the real environment.
+
+### Validated 2026-09-14
+
+| Check | Where | Result |
+|---|---|---|
+| Lint / format / migrations review / typecheck / tests / build | GitHub Actions `build-and-test` | pass, 24 files |
+| End-to-end, desktop + mobile | GitHub Actions `e2e` | **115 passed, 1 skipped** |
+| Compose review, production images | GitHub Actions `validate-docker` | pass |
+| Deploy | GitHub Actions `deploy`, run 34899362038 | success, tag `00c61c6defed` |
+| Online smoke, desktop + mobile | `npm run test:e2e:online` against the site | **2 passed** |
+| Backup → restore | production job → `scripts/restore-drill.sh` | pass, every count matching |
+| Crash and restart recovery | on the VPS | pass |
 
 ---
 
 ## Where this leaves the MVP
 
-Every stage in [21-mvp-roadmap.md](sdd/21-mvp-roadmap.md) is implemented, tested and
-committed. What is left is not code.
+Every stage in [21-mvp-roadmap.md](sdd/21-mvp-roadmap.md) is implemented, tested,
+committed and **running on the VPS** at `https://2-25-72-199.sslip.io`. What is left is not code.
 
-### Must happen before production, and cannot be done from a development machine
+### Still to be done by a person
 
-Everything a development machine could rehearse has been (see the validation phase
-above); what remains needs a domain, the VPS, a GitHub token or a phone. The exact list,
-with what was verified about each and the command to run, is
-[deployment.md — Before the first production deploy](deployment.md#before-the-first-production-deploy).
+The real domain, one push received on a phone, one large upload interrupted on a phone —
+each with its steps in [deployment.md](deployment.md#what-the-ip-first-setup-cannot-do).
 
 ### Known and deliberate
 

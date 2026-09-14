@@ -20,6 +20,9 @@
 # Run it before any deploy whose migration you are not certain of.
 
 set -Eeuo pipefail
+# Git Bash on Windows rewrites arguments that look like POSIX paths (/tmp/x) into
+# Windows paths before docker sees them; this keeps them intact. Harmless elsewhere.
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 CONTAINER="${DRILL_CONTAINER:-agency-hub-migration-drill}"

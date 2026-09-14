@@ -15,6 +15,9 @@
 # is removed by the trap below even if the script is interrupted.
 
 set -Eeuo pipefail
+# Git Bash on Windows rewrites arguments that look like POSIX paths (/tmp/x) into
+# Windows paths before docker sees them; this keeps them intact. Harmless elsewhere.
+export MSYS_NO_PATHCONV=1
 
 DUMP="${1:-}"
 CONTAINER="${DRILL_CONTAINER:-agency-hub-restore-drill}"

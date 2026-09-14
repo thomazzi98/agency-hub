@@ -57,7 +57,7 @@ loudly at deploy time rather than quietly at first use:
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `APP_DOMAIN` (required)                        | The domain Caddy serves and gets its certificate for.                                                                   |
 | `STORAGE_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_BUCKET` (required) | The R2 values (`R2_*` in `.env.example`), with `STORAGE_FORCE_PATH_STYLE=false`.                       |
-| `STORAGE_PUBLIC_ORIGIN` (required)             | `https://<account>.r2.cloudflarestorage.com` — the origin the browser PUTs file parts to. The Content-Security-Policy in [deploy/Caddyfile](../deploy/Caddyfile) allows exactly this origin; left out, the browser would block every upload with nothing in any server log. |
+| `STORAGE_PUBLIC_ORIGIN` (required)             | The origin of the presigned URLs the browser PUTs file parts to. With `STORAGE_FORCE_PATH_STYLE=false` (R2) the bucket is part of the host: `https://<bucket>.<account>.r2.cloudflarestorage.com`; with path style it is the endpoint origin. The Content-Security-Policy in [deploy/Caddyfile](../deploy/Caddyfile) allows exactly this origin; wrong or missing, the browser blocks every upload with nothing in any server log — found this way on the first online run. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DB_OWNER_USER`, `DB_OWNER_PASSWORD`, `DATABASE_URL` (required) | The owner role and the least-privilege `agency_hub_app` role, as in `.env.example` but with real passwords. |
 | `PASSWORD_PEPPER` (required)                   | Long and random; permanent for the life of the database.                                                                |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Its **own** pair, from `npm run push:keys --workspace=@agency-hub/api`. Empty disables push; in-app notifications still work. |
@@ -234,6 +234,9 @@ drops nothing; the one company it leaves is archived and named for what it is.
 
 ## Checking on it
 
+`API_IMAGE` and `WEB_IMAGE` must be in the environment for any `docker compose` command
+here — see [Everyday commands on the VPS](#everyday-commands-on-the-vps).
+
 ```bash
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs --tail 200 api
@@ -245,68 +248,88 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint sh migrate \
   -c 'npx prisma migrate status --schema apps/api/prisma/schema.prisma'
 ```
 
-## Before the first production deploy
+## The site as deployed on 2026-09-14
 
-State on 2026-09-14, after the go-live-by-IP work. Done means done and verified.
+**Live at `https://2-25-72-199.sslip.io`** (VPS `2.25.72.199`; `http://2.25.72.199`
+redirects there). Deployed by the pipeline — run 34899362038, tag `00c61c6defed` — after
+the VPS was prepared per [First-time VPS setup](#first-time-vps-setup) and the secrets
+`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` were set. Certificate from Let's Encrypt
+(`YE2`), valid to 2026-12-13 and renewed by Caddy.
 
-**Done**
+Verified against the published site the same day:
 
-- **VPS prepared** (`2.25.72.199`, Ubuntu 26.04 LTS, 2 vCPU / 8 GB / 95 GB free): Docker
-  29 and Compose v5 installed with get.docker.com; user `deploy` in the `docker` group;
-  `/opt/agency-hub` owned by it; ufw active allowing only 22, 80 and 443.
-- **R2 CORS applied and read back**: bucket `agency-hub`, one rule — `PUT`, `GET`,
-  `HEAD` from `https://2-25-72-199.sslip.io`, all request headers, `ETag` exposed,
-  cached for an hour. The 7-day abort-incomplete-multipart lifecycle rule is present.
-  When the real domain arrives, run `storage:configure` again with `--origin` set to it.
-- **GitHub**: `main` carries the MVP; CI is green (24 test files, 113 E2E); the Deploy
-  workflow publishes `ghcr.io/thomazzi98/agency-hub-api:<tag>` and `-web:<tag>` (first
-  tag `d29390d2c14f`); secrets `DEPLOY_HOST` and `DEPLOY_USER` are set.
-- **Prepared on the development machine**, in the git-ignored folder
-  `.deploy-secrets.local/`: the dedicated deploy key pair (`agency-hub-deploy`,
-  `agency-hub-deploy.pub`) and the complete production `.env` (`production.env`, 24
-  variables: provisional `APP_DOMAIN`, generated database passwords, pepper, production
-  VAPID pair, backup key, R2 values, first administrator with a temporary password).
+| Check | Result |
+| --- | --- |
+| Pipeline | verify (24 test files, 115 E2E) → images to GHCR → SSH → pull → migrations (14, as a separate service) → restart → `/health/ready` |
+| Containers | `api` healthy, `worker` up with push **enabled**, `web` on 80/443, `postgres` healthy with **no published port**; ~140 MB RAM in total |
+| Database | `agency_hub_app` is `NOSUPERUSER NOBYPASSRLS`; 22 tables with RLS, 24 policies; `audit_logs` and `campaign_history` append-only |
+| First administrator | created with the compiled seed; must change its password at first sign-in |
+| Browser, desktop and phone (`npm run test:e2e:online`) | health through the proxy; sign-in with `HttpOnly; Secure; SameSite=Lax`; shell; a company with a 64 KB file sent **from the browser straight to R2** and downloaded back through a signed URL; archive; sign-out |
+| R2 | CORS for `https://2-25-72-199.sslip.io` applied and read back; the browser's PUTs go to `https://agency-hub.<account>.r2.cloudflarestorage.com`, which the CSP allows |
+| Backup | requested through the API (202), produced by the worker's `pg_dump`, encrypted at rest (file 28 bytes longer than the download: IV + tag), downloaded as `PGDMP`, restored into a throwaway PostgreSQL by `scripts/restore-drill.sh` with zero errors and every count matching; a second request while one ran answered `409 backup_already_running` |
+| Recovery | API process killed → restarted by Docker, healthy in 1 s; PostgreSQL restarted → API healthy again in 2 s, rows intact; worker unaffected. (`docker kill`/`docker stop` count as manual stops and are **not** restarted under `unless-stopped` — that is Docker's rule, not a fault.) |
 
-**Left to a person** — three actions the automated environment refuses to perform
-(installing an SSH key on a server, uploading a secrets file, uploading a private key),
-in Git Bash from the repository root:
+What the validation left behind: six archived companies named `Validação online …`
+with two 64 KB files, and the account `validacao-e2e@example.com` — **deactivated**.
+
+### What the IP-first setup cannot do
+
+- **The real domain.** Point its records at the VPS, set `APP_DOMAIN` in the VPS `.env`,
+  re-run the Deploy workflow with the current tag, and run
+  `storage:configure --origin https://<domain>` so uploads keep working from it. Until
+  then the site answers only at the sslip.io name.
+- **Push on a phone.** The production VAPID pair is in the `.env` and the worker reports
+  push enabled; the device contract is covered by E2E. Whether a notification arrives
+  needs a phone: sign in there, Notificações → "Ativar avisos neste dispositivo", accept,
+  then have someone open a pendência addressed to you.
+- **A large upload interrupted on a phone**, on mobile data: lock the screen, switch
+  networks mid-transfer, pause, resume, cancel. Every transition is covered by E2E at a
+  phone viewport with parked and refused storage requests; a real radio is not.
+
+### Running the online check again
+
+It needs an `agency_admin` whose first password change is done. Rather than using the
+real administrator, create a throwaway one on the VPS (its password goes to a root-only
+file, never to a terminal), run the check, then deactivate it:
 
 ```bash
-# 1. Authorize the deploy key for the deploy user on the VPS
-cat .deploy-secrets.local/agency-hub-deploy.pub | ssh root@2.25.72.199 \
-  'install -d -m 700 -o deploy -g deploy /home/deploy/.ssh &&
-   cat >> /home/deploy/.ssh/authorized_keys &&
-   chown deploy:deploy /home/deploy/.ssh/authorized_keys && chmod 600 /home/deploy/.ssh/authorized_keys'
-
-# 2. Put the production .env on the VPS
-scp .deploy-secrets.local/production.env root@2.25.72.199:/opt/agency-hub/.env
-ssh root@2.25.72.199 'chown deploy:deploy /opt/agency-hub/.env && chmod 600 /opt/agency-hub/.env'
-
-# 3. Give the pipeline the private half of the deploy key
-gh secret set DEPLOY_SSH_KEY < .deploy-secrets.local/agency-hub-deploy
+cd /opt/agency-hub && TAG=$(cat .deployed-tag)
+export API_IMAGE=ghcr.io/thomazzi98/agency-hub-api:$TAG WEB_IMAGE=ghcr.io/thomazzi98/agency-hub-web:$TAG
+umask 077
+docker compose -f docker-compose.prod.yml run --rm --no-deps -T --entrypoint node api --input-type=module -e '
+const { getPrismaClient, disconnectPrismaClient } = await import("/app/apps/api/dist/shared/db.js");
+const { hashPassword } = await import("/app/apps/api/dist/modules/auth/password.js");
+const password = (await import("node:crypto")).randomBytes(18).toString("base64url");
+const passwordHash = await hashPassword(password);
+await getPrismaClient().user.upsert({
+  where: { email: "validacao-e2e@example.com" },
+  update: { passwordHash, status: "active", mustChangePassword: false },
+  create: { email: "validacao-e2e@example.com", name: "Validação automática", role: "agency_admin", status: "active", mustChangePassword: false, passwordHash },
+});
+await disconnectPrismaClient();
+process.stdout.write(password);
+' > /root/agency-hub-validation-admin.txt
 ```
 
-Then re-run the failed `deploy` job of the latest Deploy run (Actions → Deploy →
-Re-run failed jobs), or start the workflow with the tag to deploy. The first run will
-also issue the certificate — the name must resolve, which `sslip.io` guarantees.
+Then, from the development machine:
 
-**After the first successful deploy**
+```bash
+E2E_ONLINE_BASE_URL=https://2-25-72-199.sslip.io \
+E2E_ONLINE_ADMIN_EMAIL=validacao-e2e@example.com \
+E2E_ONLINE_ADMIN_PASSWORD="$(ssh root@2.25.72.199 cat /root/agency-hub-validation-admin.txt)" \
+  npm run test:e2e:online
+```
 
-1. **Create the first administrator** ([above](#the-first-administrator)); its
-   temporary password is `BOOTSTRAP_ADMIN_PASSWORD` in the VPS `.env`, and the app
-   forces a change at first sign-in.
-2. **Run the online check**: `npm run test:e2e:online` with `E2E_ONLINE_BASE_URL`
-   and an administrator whose first password change is done.
-3. **Confirm one push on a real phone**: sign in on the phone, Notificações → "Ativar
-   avisos neste dispositivo", accept the prompt, then have someone else open a pendência
-   addressed to you. The production VAPID pair is already in the `.env`; the device
-   contract is covered by E2E, delivery through a push service only a phone can show.
-4. **Upload a large file from a real phone** on mobile data and interrupt it: lock the
-   screen, switch to Wi-Fi mid-transfer, pause and resume from the queue, cancel one and
-   confirm the prompt. Every transition is covered by E2E at a phone viewport with
-   parked and refused storage requests; what only a device can show is a real radio.
-5. **Take one backup from the admin screen and run `./scripts/restore-drill.sh` on it**,
-   so the volume and the image proven are production's.
+And afterwards, on the VPS, set that user's `status` to `inactive` the same way and
+delete the file.
 
-**Later: the real domain.** Point its records at the VPS, set `APP_DOMAIN` in the VPS
-`.env`, re-run the deploy, and run `storage:configure --origin https://<domain>`.
+### Everyday commands on the VPS
+
+The compose file interpolates the image tags, so give it the live ones first:
+
+```bash
+cd /opt/agency-hub && TAG=$(cat .deployed-tag)
+export API_IMAGE=ghcr.io/thomazzi98/agency-hub-api:$TAG WEB_IMAGE=ghcr.io/thomazzi98/agency-hub-web:$TAG
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs --tail 200 api
+```
