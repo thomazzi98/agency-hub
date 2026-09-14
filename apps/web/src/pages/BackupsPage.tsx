@@ -135,7 +135,11 @@ export default function BackupsPage() {
         <h2 className="text-base font-semibold text-slate-900">{strings.backups.history}</h2>
 
         {backups.isPending && <Spinner className="h-4 w-4" />}
-        {backups.error && <Alert tone="error">{backups.error.message}</Alert>}
+        {backups.error && (
+          <Alert tone="error" onRetry={() => void backups.refetch()}>
+            {backups.error.message}
+          </Alert>
+        )}
 
         {backups.data && backups.data.length === 0 && <EmptyState title={strings.backups.empty} />}
 

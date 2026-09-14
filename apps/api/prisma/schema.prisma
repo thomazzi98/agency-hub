@@ -467,6 +467,7 @@ model BrandingSettings {
 
   updatedBy User? @relation("BrandingUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
 
+  @@index([updatedById])
   @@map("branding_settings")
 }
 
@@ -524,6 +525,11 @@ model Folder {
   @@index([companyId, projectId])
   @@index([companyId, parentFolderId])
   @@index([createdById])
+  /// A foreign key with no *leading* index makes deleting or updating the parent a
+  /// sequential scan of this table, whatever the composite indexes cover in second
+  /// position (14-database-design.md#indexing-strategy).
+  @@index([projectId])
+  @@index([parentFolderId])
   @@map("folders")
 }
 
@@ -560,6 +566,11 @@ model File {
   @@index([companyId, uploadedAt(sort: Desc)])
   @@index([companyId, projectId])
   @@index([uploadedById])
+  /// A foreign key with no *leading* index makes deleting or updating the parent a
+  /// sequential scan of this table, whatever the composite indexes cover in second
+  /// position (14-database-design.md#indexing-strategy).
+  @@index([projectId])
+  @@index([folderId])
   @@map("files")
 }
 
@@ -597,6 +608,8 @@ model UploadSession {
   @@index([companyId, status])
   @@index([status, lastActivityAt])
   @@index([initiatedById])
+  @@index([projectId])
+  @@index([folderId])
   @@map("upload_sessions")
 }
 
@@ -638,6 +651,7 @@ model DeletionRequest {
   @@index([companyId, status, createdAt(sort: Desc)])
   @@index([targetType, targetId])
   @@index([requestedById])
+  @@index([reviewedById])
   @@map("deletion_requests")
 }
 

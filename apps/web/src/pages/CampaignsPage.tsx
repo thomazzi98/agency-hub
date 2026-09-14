@@ -284,7 +284,11 @@ export default function CampaignsPage() {
         />
       </Card>
 
-      {list.error && <Alert tone="error">{list.error.message}</Alert>}
+      {list.error && (
+        <Alert tone="error" onRetry={() => void list.refetch()}>
+          {list.error.message}
+        </Alert>
+      )}
 
       {canManage && companyId && (accounts.data ?? []).length === 0 && !accounts.isPending && (
         <Alert tone="info">{strings.campaigns.noAccounts}</Alert>

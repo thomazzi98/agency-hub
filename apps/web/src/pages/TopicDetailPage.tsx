@@ -23,7 +23,13 @@ export default function TopicDetailPage() {
   const [body, setBody] = useState('');
 
   if (topic.isPending) return <LoadingScreen />;
-  if (topic.isError) return <Alert tone="error">{topic.error.message}</Alert>;
+  if (topic.isError) {
+    return (
+      <Alert tone="error" onRetry={() => void topic.refetch()}>
+        {topic.error.message}
+      </Alert>
+    );
+  }
   if (!topic.data) return <Alert tone="error">{strings.errors.not_found}</Alert>;
 
   const data = topic.data;

@@ -68,7 +68,13 @@ export default function CampaignDetailPage() {
   const [form, setForm] = useState<CampaignForm | null>(null);
 
   if (campaign.isPending) return <LoadingScreen />;
-  if (campaign.error) return <Alert tone="error">{campaign.error.message}</Alert>;
+  if (campaign.error) {
+    return (
+      <Alert tone="error" onRetry={() => void campaign.refetch()}>
+        {campaign.error.message}
+      </Alert>
+    );
+  }
   if (!campaign.data) return null;
 
   const item = campaign.data;

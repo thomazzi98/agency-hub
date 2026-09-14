@@ -121,7 +121,11 @@ export default function PublicationsPage() {
         />
       </Card>
 
-      {list.error && <Alert tone="error">{list.error.message}</Alert>}
+      {list.error && (
+        <Alert tone="error" onRetry={() => void list.refetch()}>
+          {list.error.message}
+        </Alert>
+      )}
       {notice && <Alert tone="success">{notice}</Alert>}
 
       {list.isPending && companyId && (

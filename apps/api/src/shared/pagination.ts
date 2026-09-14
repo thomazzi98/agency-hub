@@ -6,7 +6,19 @@ export const MAX_PAGE_SIZE = 100;
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+  /**
+   * Clamped rather than rejected: the acceptance criterion is that the response is
+   * capped, never unbounded (22-acceptance-criteria.md #30). Answering a client that
+   * asks for too much with a 400 would turn an old or mistaken caller into a broken
+   * screen, where serving it a hundred rows answers the question it was actually
+   * asking. The cap itself is not negotiable — it just is not a reason to fail.
+   */
+  pageSize: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(DEFAULT_PAGE_SIZE)
+    .transform((value) => Math.min(value, MAX_PAGE_SIZE)),
 });
 
 export type Pagination = z.infer<typeof paginationSchema>;

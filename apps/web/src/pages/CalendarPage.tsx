@@ -172,7 +172,9 @@ export default function CalendarPage() {
   const duplicate = useDuplicateContent();
   const remove = useDeleteContent();
 
-  const error = calendar.error ?? list.error ?? duplicate.error ?? remove.error;
+  // A failed load can be retried; a rejected mutation cannot — see FilesPage.
+  const loadError = calendar.error ?? list.error;
+  const error = duplicate.error ?? remove.error;
 
   const byDay = useMemo(() => {
     const map = new Map<string, Content[]>();
@@ -280,6 +282,14 @@ export default function CalendarPage() {
         />
       </Card>
 
+      {loadError && (
+        <Alert
+          tone="error"
+          onRetry={() => void (view === 'list' ? list.refetch() : calendar.refetch())}
+        >
+          {loadError.message}
+        </Alert>
+      )}
       {error && <Alert tone="error">{error.message}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 

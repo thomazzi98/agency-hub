@@ -118,7 +118,11 @@ function AgencyDashboard({ currentUser }: { currentUser: { name: string } }) {
         </button>
       </Card>
 
-      {dashboard.error && <Alert tone="error">{dashboard.error.message}</Alert>}
+      {dashboard.error && (
+        <Alert tone="error" onRetry={() => void dashboard.refetch()}>
+          {dashboard.error.message}
+        </Alert>
+      )}
 
       {dashboard.isPending && (
         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -256,7 +260,13 @@ function CompanyDashboard({
   const dashboard = useCompanyDashboard(companyId);
 
   if (dashboard.isPending) return <LoadingScreen />;
-  if (dashboard.error) return <Alert tone="error">{dashboard.error.message}</Alert>;
+  if (dashboard.error) {
+    return (
+      <Alert tone="error" onRetry={() => void dashboard.refetch()}>
+        {dashboard.error.message}
+      </Alert>
+    );
+  }
   if (!dashboard.data) return null;
 
   const { counts } = dashboard.data;

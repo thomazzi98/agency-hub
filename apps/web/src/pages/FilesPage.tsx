@@ -83,9 +83,15 @@ export default function FilesPage() {
   const deleteFile = useDeleteFile();
   const requestDeletion = useRequestDeletion();
 
+  /**
+   * Split deliberately. A failed *load* is worth a retry — the connection dropped and
+   * asking again may well work. A rejected *mutation* is not: "esvazie a pasta antes
+   * de excluí-la" will say the same thing however many times it is retried, and
+   * offering the button invites someone to keep pressing it.
+   */
+  const loadError = folders.error ?? files.error;
   const error =
-    folders.error ??
-    files.error ??
+    createFolder.error ??
     createFolder.error ??
     renameFolder.error ??
     deleteFolder.error ??
@@ -152,6 +158,11 @@ export default function FilesPage() {
 
       {!companyId && companies.length > 0 && (
         <Alert tone="info">{strings.folders.selectCompany}</Alert>
+      )}
+      {loadError && (
+        <Alert tone="error" onRetry={() => void files.refetch()}>
+          {loadError.message}
+        </Alert>
       )}
       {error && <Alert tone="error">{error.message}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}

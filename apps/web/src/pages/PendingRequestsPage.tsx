@@ -200,7 +200,11 @@ export default function PendingRequestsPage() {
         />
       </Card>
 
-      {list.error && <Alert tone="error">{list.error.message}</Alert>}
+      {list.error && (
+        <Alert tone="error" onRetry={() => void list.refetch()}>
+          {list.error.message}
+        </Alert>
+      )}
 
       {companyId && summary.data && (
         <Card className="flex flex-wrap gap-x-6 gap-y-2 text-sm">

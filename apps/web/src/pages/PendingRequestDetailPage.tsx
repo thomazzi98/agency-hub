@@ -42,7 +42,13 @@ export default function PendingRequestDetailPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   if (request.isPending) return <LoadingScreen />;
-  if (request.error) return <Alert tone="error">{request.error.message}</Alert>;
+  if (request.error) {
+    return (
+      <Alert tone="error" onRetry={() => void request.refetch()}>
+        {request.error.message}
+      </Alert>
+    );
+  }
   if (!request.data) return null;
 
   const item = request.data;

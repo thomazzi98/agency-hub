@@ -105,11 +105,16 @@ export function PushSettings() {
                     </div>
                     <Button
                       variant="danger"
-                      onClick={() =>
+                      onClick={() => {
+                        // Every destructive action confirms first
+                        // (22-acceptance-criteria.md #29). Removing a registration
+                        // silently stops that device being reachable, and the only
+                        // way back is to grant the browser permission again.
+                        if (!window.confirm(strings.notifications.pushConfirmRemove)) return;
                         revoke.mutate(device.id, {
                           onSuccess: () => setNotice(strings.notifications.pushRemoved),
-                        })
-                      }
+                        });
+                      }}
                     >
                       {strings.notifications.pushRemove}
                     </Button>

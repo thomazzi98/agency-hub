@@ -545,6 +545,8 @@ export const strings = {
     pushUnavailable: 'Este servidor não está configurado para enviar avisos.',
     pushDevices: 'Dispositivos registrados',
     pushRemove: 'Remover',
+    pushConfirmRemove:
+      'Remover este dispositivo? Ele deixa de receber avisos até você ativar de novo.',
     pushRemoved: 'Dispositivo removido.',
     pushNoDevices: 'Nenhum dispositivo registrado.',
     pushChannel: 'Receber aviso no dispositivo',
