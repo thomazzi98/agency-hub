@@ -60,6 +60,10 @@ export default defineConfig({
         // instead of needing 32 MiB of test bytes to cross a 16 MiB part size.
         UPLOAD_PART_SIZE_BYTES: String(5 * 1024 * 1024),
         STORAGE_BUCKET: process.env.E2E_STORAGE_BUCKET ?? 'agency-hub-e2e',
+        // No worker runs in this suite, so a queued backup would never finish and the
+        // single-flight rule would refuse every later request. Zero means "anything
+        // still in flight has been abandoned", which is exactly true here.
+        BACKUP_STALE_MINUTES: '0',
       },
     },
     {

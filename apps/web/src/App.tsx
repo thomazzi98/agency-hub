@@ -19,6 +19,7 @@ import PublicationsPage from './pages/PublicationsPage';
 import PendingRequestsPage from './pages/PendingRequestsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import CampaignsPage from './pages/CampaignsPage';
+import BackupsPage from './pages/BackupsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import PendingRequestDetailPage from './pages/PendingRequestDetailPage';
 import TopicsPage from './pages/TopicsPage';
@@ -155,6 +156,17 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <PublicationsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/backup"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <BackupsPage />
                   </AppShell>
                 </ProtectedRoute>
               }

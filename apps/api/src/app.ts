@@ -28,6 +28,7 @@ import { pendingRequestRoutes } from './modules/pending-requests/routes.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { dashboardRoutes } from './modules/dashboard/routes.js';
 import { campaignRoutes } from './modules/campaigns/routes.js';
+import { backupRoutes } from './modules/backups/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -114,6 +115,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       await api.register(notificationRoutes);
       await api.register(dashboardRoutes);
       await api.register(campaignRoutes);
+      await api.register(backupRoutes);
     },
     { prefix: '/api' },
   );

@@ -68,6 +68,31 @@ const envSchema = z
     UPLOAD_CLEANUP_CRON: z.string().min(1).default('0 * * * *'),
     CONTENT_OVERDUE_CRON: z.string().min(1).default('15 * * * *'),
 
+    // Manual database backup (11-backup-and-recovery.md). The directory is shared
+    // between the API and the worker: the worker writes the dump, the API streams it.
+    BACKUP_DIRECTORY: z.string().min(1).default('./var/backups'),
+    BACKUP_RETENTION_MINUTES: z.coerce.number().int().positive().default(120),
+    BACKUP_CLEANUP_CRON: z.string().min(1).default('30 * * * *'),
+    /**
+     * How long a backup may sit queued or processing before a new request supersedes
+     * it. Without this a worker that dies mid-dump locks backups out permanently:
+     * the single-flight rule would keep refusing every later request forever, with no
+     * way to clear it from the UI. Generous by default — a dump legitimately takes a
+     * while — and the E2E environment sets it to 0 because it runs no worker at all.
+     */
+    BACKUP_STALE_MINUTES: z.coerce.number().int().nonnegative().default(60),
+    /**
+     * 64 hex characters (32 bytes). Set it and dumps are encrypted at rest with
+     * AES-256-GCM and decrypted while streaming the download; leave it empty and the
+     * file is compressed only, protected by the volume's own access control.
+     */
+    BACKUP_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex characters')
+      .optional(),
+    /** Path to pg_dump, for images where it is not on PATH. */
+    PG_DUMP_PATH: z.string().min(1).default('pg_dump'),
+
     // Web Push (ADR-0005). Absent keys disable push entirely and the app falls back to
     // in-app notifications only, which is the system of record either way — so a
     // deployment without keys is degraded, never broken.
@@ -85,6 +110,9 @@ const envSchema = z
     // Insecure cookies must never be possible in production, but a developer on
     // plain http needs them off — so the default follows NODE_ENV, not a literal.
     SESSION_COOKIE_SECURE: value.SESSION_COOKIE_SECURE ?? value.NODE_ENV === 'production',
+    backupEncryptionKey: value.BACKUP_ENCRYPTION_KEY
+      ? Buffer.from(value.BACKUP_ENCRYPTION_KEY, 'hex')
+      : null,
     /** Push is only attempted when the deployment actually has a key pair. */
     pushEnabled: Boolean(value.VAPID_PUBLIC_KEY && value.VAPID_PRIVATE_KEY && value.VAPID_SUBJECT),
     corsOrigins: (value.CORS_ORIGIN ?? '')

@@ -12,6 +12,11 @@ import {
   dispatchPushNotifications,
 } from './jobs/dispatch-push-notifications.js';
 import { NOTIFY_OVERDUE_CONTENT_JOB, notifyOverdueContent } from './jobs/notify-overdue-content.js';
+import { RUN_DATABASE_BACKUP_JOB, runDatabaseBackup } from './jobs/run-database-backup.js';
+import {
+  CLEANUP_EXPIRED_BACKUPS_JOB,
+  cleanupExpiredBackups,
+} from './jobs/cleanup-expired-backups.js';
 
 loadDotenv();
 
@@ -36,6 +41,8 @@ async function main(): Promise<void> {
   await boss.createQueue(CLEANUP_ABANDONED_UPLOADS_JOB);
   await boss.createQueue(DISPATCH_PUSH_NOTIFICATIONS_JOB);
   await boss.createQueue(NOTIFY_OVERDUE_CONTENT_JOB);
+  await boss.createQueue(RUN_DATABASE_BACKUP_JOB);
+  await boss.createQueue(CLEANUP_EXPIRED_BACKUPS_JOB);
 
   await boss.work(CLEANUP_ABANDONED_UPLOADS_JOB, { batchSize: 1 }, async () => {
     const result = await cleanupAbandonedUploads(prisma);
@@ -60,10 +67,29 @@ async function main(): Promise<void> {
     );
   });
 
+  // One at a time, and polled rather than pushed: the API cannot enqueue (pg-boss owns
+  // its schema with owner credentials the API process deliberately does not use), and
+  // a dump is heavy enough that a minute of latency costs nothing next to running two.
+  await boss.work(RUN_DATABASE_BACKUP_JOB, { batchSize: 1 }, async () => {
+    const result = await runDatabaseBackup(prisma);
+    if (result.status !== 'skipped') {
+      console.log(`[worker] ${RUN_DATABASE_BACKUP_JOB}: ${result.status} ${result.fileName ?? ''}`);
+    }
+  });
+
+  await boss.work(CLEANUP_EXPIRED_BACKUPS_JOB, { batchSize: 1 }, async () => {
+    const result = await cleanupExpiredBackups(prisma);
+    if (result.examined > 0) {
+      console.log(`[worker] ${CLEANUP_EXPIRED_BACKUPS_JOB}: deleted ${result.deleted}`);
+    }
+  });
+
   // Hourly, per 07-upload-architecture.md. pg-boss keeps one schedule per queue name,
   // so restarting the worker re-registers rather than accumulating duplicates.
   await boss.schedule(CLEANUP_ABANDONED_UPLOADS_JOB, env.UPLOAD_CLEANUP_CRON);
   await boss.schedule(NOTIFY_OVERDUE_CONTENT_JOB, env.CONTENT_OVERDUE_CRON);
+  await boss.schedule(CLEANUP_EXPIRED_BACKUPS_JOB, env.BACKUP_CLEANUP_CRON);
+  await boss.schedule(RUN_DATABASE_BACKUP_JOB, '* * * * *');
 
   // Every minute: the in-app centre is already real-time, so this only decides how
   // soon a phone buzzes — and a tighter loop would fight the 5-minute per-resource

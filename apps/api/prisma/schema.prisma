@@ -99,6 +99,7 @@ model User {
   responsibleCampaigns    Campaign[]           @relation("CampaignResponsible")
   createdCampaigns        Campaign[]           @relation("CampaignCreatedBy")
   campaignChanges         CampaignHistory[]    @relation("CampaignHistoryChangedBy")
+  backupJobs              BackupJob[]          @relation("BackupRequestedBy")
 
   @@index([status])
   @@map("users")
@@ -284,6 +285,15 @@ enum ProductionStatus {
   cancelled
 
   @@map("production_status")
+}
+
+enum BackupJobStatus {
+  queued
+  processing
+  completed
+  failed
+
+  @@map("backup_job_status")
 }
 
 enum AdPlatform {
@@ -809,6 +819,34 @@ model PushDevice {
 
   @@index([userId, enabled])
   @@map("push_devices")
+}
+
+/// A manual database dump somebody asked for. Global rather than tenant data — a
+/// backup is the whole database, so access is gated by role, not by company
+/// (14-database-design.md). Phase 1 has no automatic schedule; this row only ever
+/// exists because an admin pressed a button (11-backup-and-recovery.md).
+model BackupJob {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestedById String?         @map("requested_by") @db.Uuid
+  status        BackupJobStatus @default(queued)
+  fileName      String?         @map("file_name") @db.VarChar(200)
+  fileSizeBytes BigInt?         @map("file_size_bytes")
+  /// Where the worker put the file. Never sent to a browser: the download streams
+  /// through the API so a path can never become a URL.
+  storagePath   String?         @map("storage_path") @db.Text
+  errorMessage  String?         @map("error_message") @db.Text
+  startedAt     DateTime?       @map("started_at") @db.Timestamptz(6)
+  completedAt   DateTime?       @map("completed_at") @db.Timestamptz(6)
+  /// The file is deleted at this point whether or not anyone downloaded it.
+  expiresAt     DateTime?       @map("expires_at") @db.Timestamptz(6)
+  downloadedAt  DateTime?       @map("downloaded_at") @db.Timestamptz(6)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  requestedBy User? @relation("BackupRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([requestedById])
+  @@map("backup_jobs")
 }
 
 /// One advertising account the agency operates for a client. Phase 1 keeps no

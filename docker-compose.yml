@@ -104,6 +104,11 @@ services:
       STORAGE_BUCKET: ${STORAGE_BUCKET:-agency-hub-dev}
       STORAGE_REGION: ${STORAGE_REGION:-auto}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+      BACKUP_DIRECTORY: /var/agency-hub/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+    # The worker writes the dump and the API streams it, so both mount the same volume.
+    volumes:
+      - backups:/var/agency-hub/backups
     ports:
       - '${API_PORT:-3000}:3000'
     healthcheck:
@@ -138,6 +143,15 @@ services:
       STORAGE_BUCKET: ${STORAGE_BUCKET:-agency-hub-dev}
       STORAGE_REGION: ${STORAGE_REGION:-auto}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+      BACKUP_DIRECTORY: /var/agency-hub/backups
+      BACKUP_RETENTION_MINUTES: ${BACKUP_RETENTION_MINUTES:-120}
+      BACKUP_CLEANUP_CRON: ${BACKUP_CLEANUP_CRON:-30 * * * *}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+    volumes:
+      - backups:/var/agency-hub/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,3 +165,6 @@ volumes:
     name: agency_hub_postgres_data
   minio_data:
     name: agency_hub_minio_data
+  backups:
+    # Deliberately a named volume: a dump of the whole database must survive a
+    # container restart long enough to be downloaded, and must not sit in the repo.

@@ -21,6 +21,12 @@ RUN npm run build --workspace=@agency-hub/api
 
 FROM base AS runtime
 ENV NODE_ENV=production
+
+# pg_dump for the manual backup job (docs/sdd/11-backup-and-recovery.md). Pinned to
+# the same major version as the server in docker-compose.yml: pg_dump refuses to dump
+# a newer server than itself, so the two have to move together.
+RUN apk add --no-cache postgresql16-client
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY apps/api/package.json ./apps/api/package.json

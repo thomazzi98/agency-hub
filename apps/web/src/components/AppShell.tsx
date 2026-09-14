@@ -19,6 +19,7 @@ const navigation = [
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },
   { to: '/sessoes', label: strings.sessions.title, end: false, adminOnly: false },
   { to: '/identidade-visual', label: strings.branding.title, end: false, adminOnly: true },
+  { to: '/backup', label: strings.backups.title, end: false, adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

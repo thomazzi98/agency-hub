@@ -102,6 +102,13 @@ const TENANT_TABLES = [
  */
 const USER_SCOPED_TABLES = ['notification_preferences', 'push_devices'];
 
+/**
+ * A backup is the whole database, so there is no company to scope it by: its policy is
+ * the role check itself, `app_bypass_rls()`, which only an authenticated `agency_admin`
+ * and the worker's system scope ever set (11-backup-and-recovery.md).
+ */
+const ADMIN_ONLY_TABLES = ['backup_jobs'];
+
 describe('row-level security coverage', () => {
   it('protects every tenant-owned table with a tenant_isolation policy', async () => {
     const rows = await prisma.$queryRaw<{ table: string; enabled: boolean; policies: bigint }[]>`
@@ -120,6 +127,34 @@ describe('row-level security coverage', () => {
     expect(
       rows.filter((row) => !row.enabled || row.policies === 0n).map((row) => row.table),
     ).toEqual([]);
+  });
+
+  it('lets no ordinary member read a backup job, policy included', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; enabled: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table,
+             c.relrowsecurity AS enabled,
+             count(p.polname) FILTER (WHERE p.polname = 'admin_only') AS policies
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_policy p ON p.polrelid = c.oid
+       WHERE n.nspname = 'public'
+         AND c.relname = ANY (${ADMIN_ONLY_TABLES})
+       GROUP BY c.relname, c.relrowsecurity
+    `;
+
+    expect(rows.map((row) => row.table).sort()).toEqual([...ADMIN_ONLY_TABLES].sort());
+    expect(
+      rows.filter((row) => !row.enabled || row.policies === 0n).map((row) => row.table),
+    ).toEqual([]);
+
+    // And in practice: a scoped member's transaction sees nothing there.
+    await withSystemScope(prisma, (tx) =>
+      tx.backupJob.create({ data: { status: 'completed', fileName: 'x.dump' } }),
+    );
+    const visible = await withTenantScope(prisma, actorFor([companyA.id], 'agency_manager'), (tx) =>
+      tx.backupJob.count(),
+    );
+    expect(visible).toBe(0);
   });
 
   it('protects every per-user table with a user_isolation policy', async () => {

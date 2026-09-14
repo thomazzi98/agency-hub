@@ -85,6 +85,11 @@ export const AuditAction = {
   CampaignUpdated: 'campaign.updated',
   CampaignStatusChanged: 'campaign.status_changed',
 
+  BackupRequested: 'backup.requested',
+  BackupCompleted: 'backup.completed',
+  BackupFailed: 'backup.failed',
+  BackupDownloaded: 'backup.downloaded',
+
   CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 

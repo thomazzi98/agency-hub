@@ -978,23 +978,98 @@ screen before signing in again" as in Stage 11.
 
 ---
 
+## Stage 14 - Manual database backup (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage14_backup_jobs` (+ `down.sql`): the `backup_jobs` table, plus the
+  unique index on a constant that makes "one backup in flight, system-wide" a database
+  guarantee rather than a read-then-write check.
+- **[backups](../apps/api/src/modules/backups/routes.ts):** request, list, and a
+  download that streams. `POST` requires **step-up reauthentication**
+  ([ADR-0010](decisions/0010-reauthentication.md)) - the first and only place in the
+  MVP that does, as the spec specifies.
+- **[the job](../apps/api/src/jobs/run-database-backup.ts):** `pg_dump --format=custom`
+  streamed straight to disk, never buffered, optionally encrypted with AES-256-GCM on
+  the way past. **[cleanup](../apps/api/src/jobs/cleanup-expired-backups.ts)** removes
+  the file after its window whether or not anybody downloaded it.
+- **`pg_dump` in the API image**, pinned to the same major version as the Postgres
+  service - it refuses to dump a newer server than itself, so the two move together.
+  The API and the worker share a named volume: the worker writes, the API streams.
+- **Frontend:** the admin screen, the password prompt, and a list that polls only while
+  something is actually running.
+
+### The policy is the role check
+
+`backup_jobs` is the one table in [14-database-design.md](sdd/14-database-design.md)
+that is global and `agency_admin`-only rather than tenant-scoped, so there is no
+`company_id` to scope by. Its policy is therefore `app_bypass_rls()` on its own — set
+only for an authenticated `agency_admin` and for the worker's system scope. A manager's
+transaction sees zero rows there at the database level, not merely at the endpoint.
+`rls.test.ts` now has a third list for it, and proves both the policy and the effect.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| A dump seam (`DumpRunner`) rather than shelling out inline | `pg_dump` is an external binary. Everything worth testing — the streaming, the encryption round trip, what happens when the dump fails — is on this side of it, and none of it should depend on a Postgres client being installed on the machine running the tests. |
+| Encryption is optional, and off unless a key is set | The spec says to encrypt when the storage is not already access-controlled equivalently. A named Docker volume on the same VPS largely is; a key makes it belt and braces. Making it mandatory would have meant inventing key management the spec does not ask for. |
+| The file is AES-256-GCM: IV first, tag last | GCM authenticates as well as encrypts, so a truncated or tampered file fails to decrypt rather than downloading as a corrupt dump. The tag is read from the end before streaming the middle, so neither side holds the database in memory. |
+| `storage_path` is stripped in one serializer | A path on the server is the one field on this row that must never reach a browser, and it *is* selected internally for the download - so it is removed deliberately rather than by remembering to leave it out of a select. |
+| The download re-checks the role independently | Two endpoints, two doors. A role change between pressing the button and clicking the link has to close the second one. |
+| The trigger button is never disabled | See below. |
+
+### Two real problems found while testing
+
+- **A failed dump left an orphan file behind.** The error path unlinked the file while
+  the write stream was still open, so the stream recreated it - an empty file nothing
+  referenced and the cleanup job would never find, because cleanup works from rows. The
+  stream is now destroyed and settled before the file is removed.
+- **A worker that dies mid-job would have locked backups out permanently.** The
+  single-flight rule would refuse every later request forever, with nothing in the UI
+  able to clear it. A request now supersedes anything still in flight past
+  `BACKUP_STALE_MINUTES` (default 60), marking it interrupted. Found because the E2E
+  suite runs no worker at all, which is the same situation seen from the outside.
+
+  The button was disabled while a job was running, which made it worse: an admin could
+  not even *try*. It is not disabled any more - the server enforces single-flight and
+  answers with a readable 409, and the frontend was never the boundary anyway.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Compose | `docker compose config` | pass |
+| Unit + integration | `npm test` | 368 passed / 22 files |
+| Backups | `apps/api/test/integration/backups.test.ts` | 21 passed - the step-up window going stale and being refreshed, the audit entry for a stale attempt, single-flight across two admins, supersession of an abandoned job, the encrypted round trip, a failed dump leaving nothing behind, the download's independent role check, expiry, and cleanup deleting an undownloaded file |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 86 passed |
+
+### What is not done
+
+The dump tests run against a stubbed `pg_dump`, by design. The real binary is exercised
+the first time a backup runs in Docker, where the image ships it — **worth doing once
+before production, and restoring the result into a throwaway database**, because an
+untested backup is not a backup. [11-backup-and-recovery.md](sdd/11-backup-and-recovery.md)
+says as much, and puts restore testing in Phase 2 alongside the automatic strategy.
+
+---
+
 ## Next step
 
-**Stage 14 - Manual database backup**
-([roadmap](sdd/21-mvp-roadmap.md#stage-14--manual-database-backup)).
+**Stage 15 - CI/CD hardening and production deploy**
+([roadmap](sdd/21-mvp-roadmap.md#stage-15--cicd-hardening--production-deploy)), the last
+stage, then the final MVP review.
 
-Concrete first action: read [11-backup-and-recovery.md](sdd/11-backup-and-recovery.md)
-in full, then add `backup_jobs` in one migration (with `down.sql`). It is the one table
-in [14-database-design.md](sdd/14-database-design.md) that is **global and
-`agency_admin`-only** rather than tenant-scoped - a backup is whole-database, so it is
-gated by role in application code and gets no `tenant_isolation` policy. Add it to
-neither list in `rls.test.ts` without saying why.
+Concrete first action: read [19-deployment-and-cicd.md](sdd/19-deployment-and-cicd.md)
+and compare it against the workflow already in `.github/workflows/` from Stage 0 - that
+one runs lint, typecheck, tests and build, and the gap to close is everything around
+them: the migration review gate, the deploy job, and the rollback path that must never
+touch the Postgres volume.
 
-The part to get right first is the step-up reauthentication from
-[ADR-0010](decisions/0010-reauthentication.md): triggering a backup requires it
-*regardless of role*, and `auth.reauthenticated` / `auth.reauthentication_failed`
-already exist in the audit catalogue, unused, waiting for exactly this.
-
-Then: one job in flight at a time, `pg_dump` in the worker (which already has the owner
-credentials the app role deliberately lacks), and a download that streams through the
-API rather than exposing a path.
+Carried forward and still open, all of them needing something outside this environment:
+the R2 bucket's CORS and lifecycle rules (**direct browser uploads to R2 fail without
+CORS**), the real-device upload pass, one real push delivered to a phone, and one real
+`pg_dump` restored into a throwaway database.

@@ -424,6 +424,35 @@ export const strings = {
     remove: 'Excluir',
     confirmRemove: 'Excluir esta nota?',
   },
+  backups: {
+    title: 'Backup do banco',
+    explain:
+      'Gera uma cópia completa do banco de dados e deixa o arquivo disponível para download por tempo limitado.',
+    request: 'Gerar backup',
+    requested: 'Backup solicitado. Ele aparece na lista abaixo quando ficar pronto.',
+    running: 'Há um backup em andamento.',
+    history: 'Backups recentes',
+    empty: 'Nenhum backup gerado ainda.',
+    download: 'Baixar',
+    expiresAt: (when: string) => `Disponível até ${when}`,
+    expired: 'Arquivo já removido.',
+    downloadedAt: (when: string) => `Baixado em ${when}`,
+    size: (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`,
+    retention:
+      'O arquivo é apagado automaticamente depois do prazo, mesmo que ninguém baixe. Guarde a cópia em outro lugar.',
+    confirmTitle: 'Confirme sua senha',
+    confirmHint:
+      'Gerar um backup exige confirmar a senha, mesmo com a sessão aberta — é uma cópia de tudo.',
+    password: 'Senha atual',
+    confirm: 'Confirmar e gerar',
+    manual: 'No MVP o backup é manual. Backups automáticos e cópias externas entram na Fase 2.',
+  },
+  backupStatuses: {
+    queued: 'Na fila',
+    processing: 'Gerando',
+    completed: 'Pronto',
+    failed: 'Falhou',
+  },
   campaigns: {
     title: 'Campanhas',
     new: 'Nova campanha',
@@ -524,6 +553,10 @@ export const strings = {
     saved: 'Preferência salva.',
   },
   auditActions: {
+    'backup.requested': 'Backup solicitado',
+    'backup.completed': 'Backup concluído',
+    'backup.failed': 'Backup falhou',
+    'backup.downloaded': 'Backup baixado',
     'ad_account.created': 'Conta de anúncios criada',
     'ad_account.updated': 'Conta de anúncios atualizada',
     'campaign.created': 'Campanha criada',
@@ -804,6 +837,9 @@ export const strings = {
     cannot_deactivate_self: 'Você não pode desativar a sua própria conta.',
     not_planned_with_details: 'Uma rede marcada como "não planejada" não pode ter data nem link.',
     request_closed: 'Esta pendência já foi encerrada.',
+    reauthentication_required: 'Confirme sua senha para continuar.',
+    backup_already_running: 'Já existe um backup em andamento. Aguarde ele terminar.',
+    backup_corrupt: 'O arquivo de backup está incompleto.',
     campaign_management_not_granted:
       'Você não tem permissão para gerenciar campanhas desta empresa.',
     unknown_ad_account: 'Conta de anúncios não encontrada nesta empresa.',
@@ -853,6 +889,10 @@ export function publicationStatusLabel(status: string): string {
 }
 
 /** The audit log is shown to admins on the dashboard, so its codes need copy too. */
+export function backupStatusLabel(status: string): string {
+  return (strings.backupStatuses as Record<string, string>)[status] ?? status;
+}
+
 export function campaignStatusLabel(status: string): string {
   return (strings.campaignStatuses as Record<string, string>)[status] ?? status;
 }
