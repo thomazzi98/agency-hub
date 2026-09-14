@@ -25,6 +25,7 @@ const PLACEHOLDERS = {
   STORAGE_ACCESS_KEY_ID: 'check',
   STORAGE_SECRET_ACCESS_KEY: 'check',
   STORAGE_BUCKET: 'check',
+  STORAGE_PUBLIC_ORIGIN: 'https://storage.example.invalid',
 };
 
 let config;

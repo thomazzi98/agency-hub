@@ -115,7 +115,10 @@ services:
     restart: unless-stopped
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN}
-      STORAGE_PUBLIC_ORIGIN: ${STORAGE_PUBLIC_ORIGIN:-}
+      # The origin the browser PUTs parts to, allowed by the Content-Security-Policy in
+      # deploy/Caddyfile. Required: left empty, the policy would silently block every
+      # upload, which is far worse than a deploy that refuses to start.
+      STORAGE_PUBLIC_ORIGIN: ${STORAGE_PUBLIC_ORIGIN:?set STORAGE_PUBLIC_ORIGIN (e.g. https://<account>.r2.cloudflarestorage.com)}
     ports:
       - '80:80'
       - '443:443'
