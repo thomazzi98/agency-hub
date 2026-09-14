@@ -197,3 +197,191 @@ test.describe('deleting a file someone else uploaded', () => {
     await expect(page.getByText('material.jpg')).toHaveCount(0);
   });
 });
+
+/**
+ * Parks every part PUT to storage until released, so a transfer can be caught mid-flight
+ * deterministically instead of racing a loopback MinIO that finishes 6 MiB in well under
+ * a second. Requests the page aborts meanwhile (pause, cancel) are simply let go.
+ */
+async function holdStoragePuts(page: Page) {
+  let holding = true;
+  const parked: Array<() => void> = [];
+  await page.route(/:9000\//, async (route) => {
+    if (route.request().method() !== 'PUT' || !holding) return route.continue();
+    await new Promise<void>((resolve) => parked.push(resolve));
+    await route.continue().catch(() => undefined);
+  });
+  const firstPut = page.waitForRequest(
+    (request) => request.method() === 'PUT' && request.url().includes(':9000/'),
+  );
+  return {
+    firstPut,
+    release: () => {
+      holding = false;
+      for (const resume of parked.splice(0)) resume();
+    },
+  };
+}
+
+test.describe('upload lifecycle controls', () => {
+  test.setTimeout(120_000);
+
+  test('sends several files at once and lists every one of them', async ({ page }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    const names = ['roteiro.pdf', 'capa.jpg', 'teaser.mp4'];
+    await page.setInputFiles('#file-uploader-input', [
+      { name: names[0], mimeType: 'application/pdf', buffer: bytes(64 * 1024) },
+      { name: names[1], mimeType: 'image/jpeg', buffer: bytes(96 * 1024) },
+      { name: names[2], mimeType: 'video/mp4', buffer: bytes(128 * 1024) },
+    ]);
+
+    // One row per file, each with its own progress, all finishing.
+    await expect(page.getByRole('progressbar')).toHaveCount(3);
+    await expect(page.getByText('Concluído', { exact: true })).toHaveCount(3, { timeout: 60_000 });
+    for (const name of names) {
+      await expect(page.getByRole('listitem').filter({ hasText: name }).last()).toBeVisible();
+    }
+
+    // The finished rows can be cleared; the stored files stay listed.
+    await page.getByRole('button', { name: 'Limpar concluídos' }).click();
+    await expect(page.getByText('Concluído', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(names[0]).first()).toBeVisible();
+  });
+
+  test('pauses a transfer and resumes it to completion', async ({ page }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    const storage = await holdStoragePuts(page);
+    await page.setInputFiles('#file-uploader-input', {
+      name: 'entrevista.mp4',
+      mimeType: 'video/mp4',
+      buffer: bytes(6 * 1024 * 1024),
+    });
+    await storage.firstPut;
+
+    await page.getByRole('button', { name: 'Pausar' }).click();
+    await expect(page.getByText('Pausado', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retomar' })).toBeVisible();
+
+    // Nothing finishes on its own while paused, even with storage answering again.
+    storage.release();
+    await expect(page.getByText('Concluído', { exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Retomar' }).click();
+    await expect(page.getByText('Concluído', { exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    await expect(
+      page.getByRole('listitem').filter({ hasText: 'entrevista.mp4' }).last(),
+    ).toBeVisible();
+  });
+
+  test('cancelling asks first, then aborts the session on the server', async ({
+    page,
+  }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    const storage = await holdStoragePuts(page);
+    await page.setInputFiles('#file-uploader-input', {
+      name: 'bastidores.mp4',
+      mimeType: 'video/mp4',
+      buffer: bytes(6 * 1024 * 1024),
+    });
+    await storage.firstPut;
+
+    // Dismissed: still in flight, still controllable (22-acceptance-criteria.md #29).
+    page.once('dialog', (dialog) => void dialog.dismiss());
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.getByRole('button', { name: 'Pausar' })).toBeVisible();
+    await expect(page.getByText('Cancelado', { exact: true })).toHaveCount(0);
+
+    // Accepted: the browser stops, and the server is told to release the parts.
+    const aborted = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/uploads\/[^/]+\/abort$/.test(response.url()),
+    );
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.getByText('Cancelado', { exact: true })).toBeVisible();
+    expect((await aborted).status()).toBe(200);
+    await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
+
+    storage.release();
+    await expect(page.getByText('Concluído', { exact: true })).toHaveCount(0);
+  });
+
+  test('a failed start is reported on the row, and the same file can be sent again', async ({
+    page,
+  }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    await page.route('**/api/uploads', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'internal_error', message: 'x' } }),
+      });
+    });
+
+    const file = { name: 'relatorio.pdf', mimeType: 'application/pdf', buffer: bytes(48 * 1024) };
+    await page.setInputFiles('#file-uploader-input', file);
+
+    const row = page.getByRole('listitem').filter({ hasText: 'relatorio.pdf' }).first();
+    await expect(row.getByText('Falhou', { exact: true })).toBeVisible();
+    await expect(row.getByRole('alert')).toContainText('Erro interno');
+    await expect(page.getByText('Concluído', { exact: true })).toHaveCount(0);
+
+    // The picker was reset, so choosing the very same file again is a fresh attempt.
+    await page.unroute('**/api/uploads');
+    await page.setInputFiles('#file-uploader-input', file);
+    await expect(page.getByText('Concluído', { exact: true })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('a part refused once by storage is retried, not failed', async ({ page }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    // Each part's first attempt meets a transient 503 — the unstable connection
+    // 07-upload-architecture.md#retry-strategy is written for.
+    const refused = new Set<string>();
+    await page.route(/:9000\//, async (route) => {
+      const request = route.request();
+      if (request.method() !== 'PUT') return route.continue();
+      const part = new URL(request.url()).searchParams.get('partNumber') ?? '1';
+      if (refused.has(part)) return route.continue();
+      refused.add(part);
+      await route.fulfill({ status: 503, body: 'try again later' });
+    });
+
+    await page.setInputFiles('#file-uploader-input', {
+      name: 'instavel.mp4',
+      mimeType: 'video/mp4',
+      buffer: bytes(6 * 1024 * 1024),
+    });
+
+    await expect(page.getByText('Concluído', { exact: true })).toBeVisible({ timeout: 60_000 });
+    // Two parts at 5 MiB, so both were refused exactly once and both got through after.
+    expect(refused.size).toBe(2);
+    await expect(page.getByText('Falhou', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    await expect(
+      page.getByRole('listitem').filter({ hasText: 'instavel.mp4' }).last(),
+    ).toBeVisible();
+  });
+});

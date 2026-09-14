@@ -61,6 +61,18 @@ function abortError(): Error {
 }
 
 /**
+ * Uppy decides whether a failed part is worth retrying from `error.source.status` —
+ * the contract its own uploader follows. An error without it is treated as final, so
+ * the retry schedule configured below would never run: one dropped packet on a phone
+ * would fail the whole file instead of retrying the part a second later.
+ */
+function retryableError(message: string, request: XMLHttpRequest): Error {
+  const error = new Error(message) as Error & { source: XMLHttpRequest };
+  error.source = request;
+  return error;
+}
+
+/**
  * A hand-written XHR rather than fetch: only XHR reports upload progress, which is the
  * difference between a visible transfer and a frozen bar on a slow mobile connection.
  */
@@ -102,14 +114,14 @@ function uploadPartBytes(options: {
 
     request.addEventListener('error', () => {
       signal?.removeEventListener('abort', onAbort);
-      reject(new Error('Falha de rede ao enviar parte do arquivo.'));
+      reject(retryableError('Falha de rede ao enviar parte do arquivo.', request));
     });
 
     request.addEventListener('load', () => {
       signal?.removeEventListener('abort', onAbort);
 
       if (request.status < 200 || request.status >= 300) {
-        reject(new Error(`Storage rejected the part (HTTP ${request.status}).`));
+        reject(retryableError(`Storage rejected the part (HTTP ${request.status}).`, request));
         return;
       }
 
