@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 import { config as loadDotenv } from 'dotenv';
+import webpush from 'web-push';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 loadDotenv({ path: path.join(rootDir, '.env'), quiet: true });
@@ -14,6 +15,12 @@ const databaseUrl = process.env.E2E_DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('E2E_DATABASE_URL is not set. Copy .env.example to .env.');
 }
+
+// A throwaway VAPID pair, minted for this run only: it lets the API advertise push so
+// the registration screen renders and the device contract (register, list, revoke) is
+// exercised for real. No key is ever written anywhere, and delivery through a push
+// service is out of reach from here regardless (docs/PROGRESS.md, Stage 11).
+const vapid = webpush.generateVAPIDKeys();
 
 export default defineConfig({
   testDir: './tests',
@@ -64,6 +71,9 @@ export default defineConfig({
         // single-flight rule would refuse every later request. Zero means "anything
         // still in flight has been abandoned", which is exactly true here.
         BACKUP_STALE_MINUTES: '0',
+        VAPID_PUBLIC_KEY: vapid.publicKey,
+        VAPID_PRIVATE_KEY: vapid.privateKey,
+        VAPID_SUBJECT: 'mailto:e2e@example.com',
       },
     },
     {

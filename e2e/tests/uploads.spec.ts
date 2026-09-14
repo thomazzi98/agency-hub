@@ -232,7 +232,7 @@ test.describe('upload lifecycle controls', () => {
     await createCompany(page, companyName);
     await openFilesFor(page, companyName);
 
-    const names = ['roteiro.pdf', 'capa.jpg', 'teaser.mp4'];
+    const names = ['roteiro.pdf', 'capa.jpg', 'teaser.mp4'] as const;
     await page.setInputFiles('#file-uploader-input', [
       { name: names[0], mimeType: 'application/pdf', buffer: bytes(64 * 1024) },
       { name: names[1], mimeType: 'image/jpeg', buffer: bytes(96 * 1024) },
