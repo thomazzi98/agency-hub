@@ -26,6 +26,9 @@ docker compose config           # compose file validity
 docker compose up -d --build    # full stack: postgres + migrate + api
 
 npm run test:e2e                # Playwright, desktop + mobile viewports
+
+npm run check:migrations        # every migration reversible, no silent data loss
+npm run check:compose           # production compose: database internal, cookie secure
 ```
 
 The E2E suite drops and recreates the database named by `E2E_DATABASE_URL` and
@@ -1118,23 +1121,105 @@ rollback - all need that environment. They are written up in
 
 ---
 
-## Next step
+## Final MVP review (done)
 
-**The final MVP review.** Every stage is implemented; what is left is to look at the
-whole thing rather than the piece in front of us:
+**Status:** complete, 2026-09-14. All fifteen roadmap stages are implemented and the
+cross-cutting review has been carried out.
 
-1. **Functional gaps** against [documentation.md](../documentation.md) and
-   [03-functional-requirements.md](sdd/03-functional-requirements.md) - every acceptance
-   criterion in [22-acceptance-criteria.md](sdd/22-acceptance-criteria.md), checked.
-2. **Security** against [16-security-requirements.md](sdd/16-security-requirements.md):
-   the tenant-isolation surface as a whole, not one module at a time.
-3. **UX states** - loading, empty and error on every screen
-   ([12-ui-ux-guidelines.md](sdd/12-ui-ux-guidelines.md)).
-4. **Performance** - N+1 patterns and index coverage
-   ([17-performance-requirements.md](sdd/17-performance-requirements.md)), including the
-   connection-pool load test that is still open question #8.
+### What the review covered
 
-Then the four environment-dependent items in
-[deployment.md](deployment.md#before-the-first-production-deploy), which are the real
-remaining work: R2 CORS (**uploads fail without it**), one push to a phone, one
-interrupted upload on a real device, and one backup restored into a throwaway database.
+Not another pass over each module — each stage proved its own behaviour on the way
+past. This looked at the statements that are true of the **whole system**, which are
+exactly the ones that hold in every module separately and stop holding when one of them
+changes. They now live in
+[acceptance.test.ts](../apps/api/test/integration/acceptance.test.ts) and
+[ux-states.spec.ts](../e2e/tests/ux-states.spec.ts).
+
+| Area | Checked | Result |
+|---|---|---|
+| Pagination (#30) | Every list endpoint, asked for 10 000 rows | Capped at 100, none unbounded |
+| Latency (#25) | p95 over 30 calls; cost of 10 rows vs 100 | Under target; no per-row growth |
+| Passwords (#16) | Login, `/auth/me`, the user list, the stored column | Never present; stored only as an argon2id hash |
+| No ad-platform calls (#20) | Every `.ts`/`.tsx` file in both apps | None |
+| Cross-tenant (#3) | A foreign id, and a list asked for at 10 000 | Byte-identical to a missing id; nothing leaked |
+| Indexing | Every foreign key in the schema | **Eight were missing a leading index** - fixed |
+| Soft-delete indexes | `files`, `comments`, `content` | Partial index present on each |
+| N+1 | Every module's route handlers and jobs | None: no query inside a row loop |
+| Destructive actions (#29) | Every `variant="danger"` in the app | **One had no confirmation** - fixed |
+| UI states (#27) | Loading, empty, error, retry, success on every page | Retry was missing on most pages - added |
+| Double submit (#28) | A 1.2 s POST, clicked twice | Exactly one record; the button disables and renames itself |
+| Raw Prisma client | Every module | Four uses, all on non-tenant tables, all legitimate |
+| Search | The six entities [03](sdd/03-functional-requirements.md#search--performance) names | All six have it |
+
+### Three real defects found and fixed
+
+- **Eight foreign keys had no *leading* index**, which
+  [14-database-design.md](sdd/14-database-design.md#indexing-strategy) requires of every
+  one of them: `folders.project_id`, `folders.parent_folder_id`, `files.project_id`,
+  `files.folder_id`, `upload_sessions.project_id`, `upload_sessions.folder_id`,
+  `deletion_requests.reviewed_by`, `branding_settings.updated_by`. The composite
+  indexes cover those columns in *second* position, which does not help the check
+  PostgreSQL runs on the referencing table when a parent row is deleted - and with
+  `onDelete: Restrict` everywhere, that check runs on every attempted delete. Migration
+  `final_review_foreign_key_indexes`, and a test that now asserts it for the whole
+  schema rather than table by table.
+- **An over-large `pageSize` returned a 400** instead of being capped. The criterion
+  asks for the response to be capped, and rejecting turns an old or mistaken caller
+  into a broken screen rather than answering what it was actually asking.
+- **Revoking a push device had no confirmation**, the only destructive action in the
+  product that did not.
+
+### And one introduced while fixing another
+
+Adding retry affordances, the first version attached one to each page's *combined*
+error - which includes rejected mutations. "Esvazie a pasta antes de excluí-la" says the
+same thing however many times it is retried, and a retry button there only invites
+someone to keep pressing it. Load errors and mutation errors are now separate on every
+screen that has both. Caught by an existing E2E that asserted the alert's exact text.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Migration + compose review | `npm run check:migrations`, `npm run check:compose` | pass |
+| Unit + integration | `npm test` | **381 passed / 23 files** |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | **92 passed** |
+
+---
+
+## Where this leaves the MVP
+
+Every stage in [21-mvp-roadmap.md](sdd/21-mvp-roadmap.md) is implemented, tested and
+committed. What is left is not code.
+
+### Must happen before production, and cannot be done from a development machine
+
+1. **Apply CORS and lifecycle rules to the R2 bucket.** Direct browser uploads **fail
+   without CORS** - this is the one item that breaks a core feature if skipped.
+   `npm run storage:configure --workspace=@agency-hub/api` against production
+   credentials.
+2. **Run the deploy pipeline once.** The SSH hop, the GHCR pull from the VPS,
+   certificate issuance and the health check against a real domain have never executed.
+   Then the two drills the roadmap asks for: a deliberately broken migration halting
+   without touching the volume, and one rollback.
+3. **Generate a VAPID pair and confirm one push on a phone.** Everything on this side is
+   built and tested; delivery through a real push service is not.
+4. **Upload a large file from a real device and interrupt it.** Resumability is the
+   point of that subsystem and has only ever been exercised in a desktop browser.
+5. **Take one backup and restore it into a throwaway database.** An untested backup is
+   not a backup.
+
+### Known and deliberate
+
+- **Automatic backups, email, ad-platform integrations, automatic publishing** are Phase
+  2/3 by the spec, not omissions ([01-product-scope.md](sdd/01-product-scope.md)).
+- **The connection-pool load test** (open question #8) still wants a run under realistic
+  concurrency. The RLS pattern holds a connection per *request*, which is why the pool
+  is sized the way it is ([ADR-0011](decisions/0011-infrastructure-sizing.md)); the
+  sizing is reasoned, not measured.
+- **A company picker beyond 100 companies** needs to become searchable. The agency has
+  dozens today ([17-performance-requirements.md](sdd/17-performance-requirements.md)),
+  so this is a growth item, recorded rather than guessed at.
+- **Per-company branding** is postponed, not planned
+  ([23-open-questions.md](sdd/23-open-questions.md)).

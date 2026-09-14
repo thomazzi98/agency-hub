@@ -115,6 +115,6 @@ earlier tag. The runbook — VPS setup, the required GitHub Secrets, rollback, a
 four things that must be done by hand before the first production deploy — is
 [docs/deployment.md](docs/deployment.md).
 
-## Next step
+## Status of the build
 
-Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. All fifteen stages are implemented; what remains needs the real environment. Running progress and the next concrete step are in [docs/PROGRESS.md](docs/PROGRESS.md).
+All fifteen stages of [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md) are implemented, and the cross-cutting review is done. What remains needs the real environment — the R2 bucket's CORS rules above all, without which direct browser uploads fail. The full list is in [docs/PROGRESS.md](docs/PROGRESS.md) and [docs/deployment.md](docs/deployment.md#before-the-first-production-deploy).
