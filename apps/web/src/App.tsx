@@ -12,7 +12,8 @@ import UsersPage from './pages/UsersPage';
 import UserFormPage from './pages/UserFormPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectFormPage from './pages/ProjectFormPage';
-import FoldersPage from './pages/FoldersPage';
+import FilesPage from './pages/FilesPage';
+import DeletionRequestsPage from './pages/DeletionRequestsPage';
 import BrandingPage from './pages/BrandingPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { BrandingProvider } from './modules/branding/BrandingProvider';
@@ -118,13 +119,22 @@ export default function App() {
             />
 
             <Route
-              path="/pastas"
+              path="/arquivos"
               element={
                 <ProtectedRoute>
                   <AppShell>
-                    <FoldersPage />
+                    <FilesPage />
                   </AppShell>
                 </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/exclusoes"
+              element={
+                <AdminRoute>
+                  <DeletionRequestsPage />
+                </AdminRoute>
               }
             />
 

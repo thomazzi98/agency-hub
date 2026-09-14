@@ -56,6 +56,10 @@ export default defineConfig({
         // login limit would trip partway through a run. The limit itself is proven
         // by the integration suite, which controls the source IP per case.
         LOGIN_IP_MAX_ATTEMPTS_PER_HOUR: '10000',
+        // The S3 multipart minimum, so a ~6 MiB fixture genuinely exercises chunking
+        // instead of needing 32 MiB of test bytes to cross a 16 MiB part size.
+        UPLOAD_PART_SIZE_BYTES: String(5 * 1024 * 1024),
+        STORAGE_BUCKET: process.env.E2E_STORAGE_BUCKET ?? 'agency-hub-e2e',
       },
     },
     {

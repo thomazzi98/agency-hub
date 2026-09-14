@@ -90,7 +90,7 @@ test.describe('folders', () => {
     const companyName = unique('Cliente', testInfo);
     await createCompany(page, companyName);
 
-    await page.getByRole('link', { name: 'Pastas' }).click();
+    await page.getByRole('link', { name: 'Arquivos' }).click();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByLabel('Nome da pasta').fill('Fotos');
@@ -99,7 +99,7 @@ test.describe('folders', () => {
 
     // Navigate into it and nest a child.
     await page.getByRole('button', { name: 'Abrir' }).click();
-    await expect(page.getByText('Nenhuma pasta aqui.')).toBeVisible();
+    await expect(page.getByText('Nenhuma pasta ou arquivo aqui.')).toBeVisible();
 
     await page.getByLabel('Nome da pasta').fill('Fachada');
     await page.getByRole('button', { name: 'Nova pasta' }).click();
@@ -126,7 +126,7 @@ test.describe('folders', () => {
     const companyName = unique('Cliente', testInfo);
     await createCompany(page, companyName);
 
-    await page.goto('/pastas');
+    await page.goto('/arquivos');
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByLabel('Nome da pasta').fill('Contratos');
@@ -144,7 +144,7 @@ test.describe('folders', () => {
   test('tells a user with no company what to do instead of failing', async ({ page }, testInfo) => {
     await signIn(page, manager(testInfo).email);
 
-    await page.getByRole('link', { name: 'Pastas' }).click();
+    await page.getByRole('link', { name: 'Arquivos' }).click();
 
     await expect(page.getByText('Você ainda não tem acesso a nenhuma empresa.')).toBeVisible();
   });

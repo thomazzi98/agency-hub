@@ -43,6 +43,15 @@ try {
       role: 'agency_manager' as const,
       mustChangePassword: false,
     },
+    {
+      // Used by the deletion-request flow, which needs someone who is *not* the
+      // uploader. Kept separate so granting it a company cannot disturb the
+      // "manager with no company" cases.
+      email: `e2e-colab-${project}@example.com`,
+      name: `Colaborador ${project}`,
+      role: 'contributor' as const,
+      mustChangePassword: false,
+    },
     ...E2E_TEMPORARY_SLOTS.map((slot) => ({
       email: `e2e-temp-${project}-${slot}@example.com`,
       name: `Temporario ${project} ${slot}`,

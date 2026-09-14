@@ -23,6 +23,12 @@ export function manager(testInfo: TestInfo): FixtureUser {
   return { email: `e2e-gestor-${project}@example.com`, name: `Gestor ${project}` };
 }
 
+/** A contributor, so a file uploaded by someone else is not theirs to delete. */
+export function collaborator(testInfo: TestInfo): FixtureUser {
+  const project = testInfo.project.name;
+  return { email: `e2e-colab-${project}@example.com`, name: `Colaborador ${project}` };
+}
+
 export function temporaryUser(testInfo: TestInfo, slot: 1 | 2 | 3): FixtureUser {
   const project = testInfo.project.name;
   return {

@@ -18,7 +18,7 @@ import {
   presignUploadPart,
   type CommittedPart,
 } from '../../shared/storage.js';
-import { evaluateUploadPolicy, partCountFor } from './policy.js';
+import { allowedMimeTypes, evaluateUploadPolicy, partCountFor } from './policy.js';
 import { fileSelect, serializeFile } from '../files/file.js';
 
 const createSchema = z.object({
@@ -153,6 +153,24 @@ async function assertPlacementIsInCompany(
 }
 
 export async function uploadRoutes(app: FastifyInstance): Promise<void> {
+  /**
+   * The browser needs the same numbers the server will enforce: it has to split the
+   * file into parts before the first control-plane call, and it should refuse an
+   * oversized or disallowed file without a round-trip. These are limits, not secrets.
+   */
+  app.get('/uploads/config', async () => {
+    const env = getEnv();
+    return {
+      data: {
+        maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
+        partSizeBytes: env.UPLOAD_PART_SIZE_BYTES,
+        presignBatchSize: env.UPLOAD_PRESIGN_BATCH_SIZE,
+        maxActiveSessionsPerCompany: env.UPLOAD_MAX_ACTIVE_SESSIONS_PER_COMPANY,
+        allowedMimeTypes: allowedMimeTypes(),
+      },
+    };
+  });
+
   app.post(
     '/uploads',
     multiScoped(async ({ runScoped, actor, request, reply }) => {
