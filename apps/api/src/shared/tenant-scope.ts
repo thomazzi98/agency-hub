@@ -68,6 +68,11 @@ export interface ScopedContext {
  * Wraps a route handler so it receives an already-scoped client. Route authors never
  * call `withTenantScope` themselves and never touch `app.prisma`, so the scoping
  * cannot be forgotten on a new endpoint (14-database-design.md, hard rule).
+ *
+ * A scoped handler must **return** its payload and use `reply.code()` for a non-200
+ * status; it must never call `reply.send()`. Sending inside the transaction would
+ * reply before the commit, so a client could be told a write succeeded and then not
+ * see it on the next request — or be told it succeeded when the commit later failed.
  */
 export function tenantScoped<TResult>(handler: (context: ScopedContext) => Promise<TResult>) {
   return async function scopedRouteHandler(
@@ -76,7 +81,20 @@ export function tenantScoped<TResult>(handler: (context: ScopedContext) => Promi
     reply: FastifyReply,
   ): Promise<TResult> {
     const actor = requireActor(request);
-    return withTenantScope(this.prisma, actor, (tx) => handler({ tx, actor, request, reply }));
+    const result = await withTenantScope(this.prisma, actor, async (tx) => {
+      const payload = await handler({ tx, actor, request, reply });
+
+      if (reply.sent) {
+        throw new Error(
+          'A tenant-scoped handler called reply.send() inside its transaction. ' +
+            'Return the payload and use reply.code() instead, so the response is only ' +
+            'sent once the transaction has committed.',
+        );
+      }
+      return payload;
+    });
+
+    return result;
   };
 }
 

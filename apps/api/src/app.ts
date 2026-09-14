@@ -10,6 +10,9 @@ import { registerAuthentication } from './shared/authentication.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { sessionRoutes } from './modules/sessions/routes.js';
+import { companyRoutes } from './modules/companies/routes.js';
+import { userRoutes } from './modules/users/routes.js';
+import { membershipRoutes } from './modules/memberships/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -76,6 +79,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       registerAuthentication(api);
       await api.register(authRoutes);
       await api.register(sessionRoutes);
+      await api.register(companyRoutes);
+      await api.register(userRoutes);
+      await api.register(membershipRoutes);
     },
     { prefix: '/api' },
   );
