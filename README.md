@@ -6,7 +6,7 @@ A multi-tenant, mobile-first web platform that centralizes a social media, conte
 
 ## Status
 
-**Stage 1 complete: database schema and migrations baseline.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
+**Stage 2 complete: authentication, sessions, and the first real screens.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Local development
 
@@ -19,8 +19,9 @@ cp .env.example .env
 # Start PostgreSQL
 docker compose up -d postgres
 
-# Apply migrations
+# Apply migrations and create the first administrator
 npm run db:migrate:deploy --workspace=@agency-hub/api
+npm run db:seed --workspace=@agency-hub/api   # prints the temporary password once
 
 # Backend (http://localhost:3000/health)
 npm run dev --workspace=@agency-hub/api
@@ -56,8 +57,11 @@ Integration tests need a running PostgreSQL. They drop and recreate the database
 
 ```bash
 docker compose up -d postgres
-npm test
+npm test          # unit + integration (Vitest)
+npm run test:e2e  # end-to-end (Playwright), desktop and mobile viewports
 ```
+
+The E2E suite starts its own API and web server on dedicated ports and uses `E2E_DATABASE_URL`, so it never disturbs a running development stack.
 
 ## Documentation
 
@@ -88,4 +92,4 @@ npm test
 
 ## Next step
 
-Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–1 (scaffolding, schema baseline) are done; Stage 2 (authentication and sessions) is next. See [docs/PROGRESS.md](docs/PROGRESS.md).
+Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–2 (scaffolding, schema baseline, authentication) are done; Stage 3 (companies, users, roles, and tenant isolation) is next. See [docs/PROGRESS.md](docs/PROGRESS.md).

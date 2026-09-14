@@ -17,7 +17,9 @@
     "db:migrate:down": "node scripts/migrate-down.mjs",
     "db:studio": "node scripts/prisma.mjs studio",
     "postinstall": "prisma generate",
-    "db:seed": "tsx src/scripts/seed.ts"
+    "db:seed": "tsx src/scripts/seed.ts",
+    "start:e2e": "tsx src/index.ts",
+    "db:seed:e2e": "tsx src/scripts/seed-e2e.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

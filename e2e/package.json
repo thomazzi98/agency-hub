@@ -1,0 +1,11 @@
+{
+  "name": "@agency-hub/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "//": "Not an npm workspace — this file exists only to mark the directory as ESM so Playwright loads the TypeScript config as a module.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint ."
+  }
+}

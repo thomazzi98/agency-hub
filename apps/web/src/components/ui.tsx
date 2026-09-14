@@ -1,0 +1,158 @@
+import {
+  forwardRef,
+  useId,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+} from 'react';
+import { strings } from '../lib/strings';
+
+type ButtonVariant = 'primary' | 'secondary' | 'danger';
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600',
+  secondary:
+    'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 focus-visible:outline-slate-500',
+  danger: 'bg-red-600 text-white hover:bg-red-700 focus-visible:outline-red-600',
+};
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  /** Renders the busy label and blocks re-submission, per the duplicate-submit rule. */
+  isLoading?: boolean;
+  loadingLabel?: string;
+}
+
+export function Button({
+  variant = 'primary',
+  isLoading = false,
+  loadingLabel,
+  children,
+  className = '',
+  disabled,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      {...props}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading}
+      className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${buttonVariants[variant]} ${className}`}
+    >
+      {isLoading && <Spinner className="h-4 w-4" />}
+      {isLoading ? (loadingLabel ?? strings.app.loading) : children}
+    </button>
+  );
+}
+
+export interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+  label: string;
+  error?: string;
+  hint?: string;
+}
+
+export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
+  { label, error, hint, className = '', ...props },
+  ref,
+) {
+  const generatedId = useId();
+  const id = props.id ?? generatedId;
+  const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <input
+        {...props}
+        id={id}
+        ref={ref}
+        aria-invalid={error ? true : undefined}
+        // Errors are tied to the field programmatically, never signalled by colour alone.
+        aria-describedby={error ? errorId : hint ? hintId : undefined}
+        className={`min-h-11 rounded-lg border px-3 py-2.5 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
+          error
+            ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+            : 'border-slate-300 focus:border-brand-500 focus:ring-brand-100'
+        } ${className}`}
+      />
+      {hint && !error && (
+        <p id={hintId} className="text-xs text-slate-500">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p id={errorId} role="alert" className="text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+});
+
+export type AlertTone = 'error' | 'success' | 'info';
+
+const alertTones: Record<AlertTone, string> = {
+  error: 'bg-red-50 text-red-800 ring-red-200',
+  success: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  info: 'bg-brand-50 text-brand-700 ring-brand-100',
+};
+
+export function Alert({
+  tone = 'info',
+  children,
+  onRetry,
+}: {
+  tone?: AlertTone;
+  children: ReactNode;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={`flex flex-col gap-2 rounded-lg px-3.5 py-3 text-sm ring-1 ${alertTones[tone]}`}
+    >
+      <span>{children}</span>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="self-start text-sm font-semibold underline underline-offset-2"
+        >
+          {strings.app.retry}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
+export function LoadingScreen({ label = strings.app.loading }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      className="flex min-h-screen flex-col items-center justify-center gap-3 text-slate-500"
+    >
+      <Spinner className="h-7 w-7" />
+      <p className="text-sm">{label}</p>
+    </div>
+  );
+}
+
+export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 ${className}`}>
+      {children}
+    </section>
+  );
+}

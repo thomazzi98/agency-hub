@@ -24,7 +24,13 @@ npm run build
 npm run format:check
 docker compose config           # compose file validity
 docker compose up -d --build    # full stack: postgres + migrate + api
+
+npm run test:e2e                # Playwright, desktop + mobile viewports
 ```
+
+The E2E suite drops and recreates the database named by `E2E_DATABASE_URL` and
+starts its own API (port 3101) and web server (port 5273), so it never touches the
+development database or collides with a running dev stack.
 
 ---
 
@@ -106,12 +112,94 @@ test setup files.
 
 ---
 
+## Stage 2 — Authentication & sessions ✅
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered — backend
+
+- **Migration** `20260914043630_stage2_sessions_and_auth_audit` (+ `down.sql`):
+  `sessions`, `password_reset_audits`, `audit_logs`, `login_attempts`, plus
+  `users.failed_login_attempts` / `users.locked_until`.
+- **Password hashing** ([password.ts](../apps/api/src/modules/auth/password.ts)):
+  Argon2id via `@node-rs/argon2` with the ADR-0009 parameters (19 MiB / 2 / 1) and a
+  server-side pepper passed as Argon2's `secret`, all configuration-driven.
+- **Sessions** ([session-service.ts](../apps/api/src/modules/auth/session-service.ts)):
+  opaque 32-byte token in an httpOnly / `SameSite=Lax` cookie, SHA-256 of the token
+  stored, 7-day sliding expiry capped at 30 days since login, individually revocable.
+- **Endpoints:** `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`,
+  `POST /api/auth/change-password`, `POST /api/auth/reauthenticate`,
+  `GET /api/sessions`, `DELETE /api/sessions/:id`, `POST /api/sessions/revoke-all`.
+- **Authentication middleware** ([authentication.ts](../apps/api/src/shared/authentication.ts)):
+  registered once for the whole `/api` scope; routes opt out via
+  `config.isPublic` / `config.allowWhilePasswordChangePending`.
+- **Error envelope** ([errors.ts](../apps/api/src/shared/errors.ts)) matching
+  [15-api-conventions.md](sdd/15-api-conventions.md), with a catch-all that never
+  leaks internals.
+- **Bootstrap seed:** `npm run db:seed --workspace=@agency-hub/api` creates the first
+  `agency_admin` and prints its password exactly once; re-running is a no-op.
+
+### Delivered — frontend
+
+Tailwind CSS v4, TanStack Query, React Router, a pt-BR strings layer
+([strings.ts](../apps/web/src/lib/strings.ts)), a shared UI kit
+([ui.tsx](../apps/web/src/components/ui.tsx)) implementing the required
+loading/empty/error/success/confirm states, and the real screens: login, forced
+password change, home, active sessions. Every screen calls the real API — the Vite
+dev server proxies `/api`, so the session cookie is same-origin in development
+exactly as it is behind Caddy in production.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| `login_attempts` is its own table, not a query over `audit_logs` | An audit retention policy must never be able to weaken a security control. |
+| Per-account lockout state lives on `users` (`failed_login_attempts`, `locked_until`) | Consecutive-failure counting with exponential backoff needs a counter, not a scan; it is read on the same row the login already loads. |
+| An unknown email still pays for a real Argon2 verification against a throwaway hash | Otherwise response time distinguishes "no such account" from "wrong password", which is account enumeration. |
+| Changing a password revokes every **other** session, keeping the current one | A password change is also the remedy for a suspected compromise; bouncing the user who just changed it would be hostile. |
+| Password minimum length: 10 characters (`PASSWORD_MIN_LENGTH`) | The SDD sets no number; 10 is above the OWASP floor of 8 and configurable. |
+| Frontend dev talks to the API through the Vite proxy rather than CORS | Keeps the cookie same-origin in development exactly as in production, so `SameSite` behaviour is never environment-specific. |
+| E2E fixture accounts are scoped per Playwright project (`desktop` / `mobile`) | Several flows mutate accounts irreversibly; sharing them would make the mobile run depend on the desktop run not having happened. |
+| Session cookie `Secure` flag defaults from `NODE_ENV` rather than a literal | An insecure cookie must be impossible in production, but a developer on plain http needs it off. |
+
+### Carried into Stage 3 — RLS blocker found during this stage
+
+`POSTGRES_USER` in `docker-compose.yml` is the database superuser, and **PostgreSQL
+always bypasses Row-Level Security for superusers and table owners** (the latter
+unless `FORCE ROW LEVEL SECURITY` is set). If the API keeps connecting as that role,
+the RLS policies required by
+[14-database-design.md](sdd/14-database-design.md#row-level-security-defense-in-depth-and-how-prisma-must-use-it)
+would exist but never apply — a defence-in-depth layer that silently does nothing.
+
+**Stage 3 must therefore:** create a dedicated non-superuser, non-owner application
+role, grant it only DML on the application tables, point `DATABASE_URL` at it
+(migrations continue to run as the owner), and add a test that proves RLS actually
+blocks a cross-tenant read for that role.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass (api, web, e2e) |
+| Unit + integration | `npm test` | 48 passed / 6 files |
+| End-to-end (desktop + mobile viewport) | `npm run test:e2e` | 16 passed / 2 projects |
+| Formatting | `npm run format:check` | pass |
+| Migration up → down → up (both migrations) | `apps/api/test/integration/migrations.test.ts` | pass |
+| Manual login flow against the running API | `curl` against `localhost:3000` | cookie flags correct; `password_change_required` gate returns 403 |
+
+**What would invalidate this:** changes to `shared/authentication.ts`, `errors.ts`,
+the session service, the Prisma schema, or the `/api` route registration.
+
+---
+
 ## Next step
 
-**Stage 2 — Authentication & sessions** ([roadmap](sdd/21-mvp-roadmap.md#stage-2--authentication--sessions),
-spec: [10-authentication-and-sessions.md](sdd/10-authentication-and-sessions.md)).
+**Stage 3 — Companies, users, roles, and tenant isolation**
+([roadmap](sdd/21-mvp-roadmap.md#stage-3--companies-users-roles-and-tenant-isolation)).
+The roadmap flags this as the highest-consequence stage in the project.
 
-Concrete first action: add the `sessions` and `password_reset_audits` tables to
-the Prisma schema plus a `SessionAction`-free migration (with `down.sql`), then
-implement Argon2id hashing (19 MiB / 2 iterations / parallelism 1, plus a
-server-side pepper from `PASSWORD_PEPPER`) in `apps/api/src/modules/auth/`.
+Concrete first action: write the migration that creates the non-superuser
+application role and enables RLS (`FORCE ROW LEVEL SECURITY` is not enough on its own
+— see the blocker above), then build `shared/tenant-scope.ts` with the mandatory
+Prisma interactive-transaction + `set_config(..., true)` pattern from
+[14-database-design.md](sdd/14-database-design.md), before any company/user CRUD.
