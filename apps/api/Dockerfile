@@ -29,6 +29,11 @@ RUN apk add --no-cache postgresql16-client
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+# The root manifest is what makes `npm run <script> --workspace=@agency-hub/api` resolve
+# inside the container - the production migrate service and the rollback runbook both
+# run exactly that. Without it npm stops at "Could not read package.json" and no
+# deploy gets past its migration step.
+COPY package.json ./package.json
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/api/scripts ./apps/api/scripts
