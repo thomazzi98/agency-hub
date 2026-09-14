@@ -85,11 +85,16 @@ const envSchema = z
      * 64 hex characters (32 bytes). Set it and dumps are encrypted at rest with
      * AES-256-GCM and decrypted while streaming the download; leave it empty and the
      * file is compressed only, protected by the volume's own access control.
+     *
+     * "Empty" has to include the empty string, not only an unset variable: the compose
+     * files hand every optional setting over as `${VAR:-}`, which is `""` when it is
+     * not in `.env`. Rejecting that made the API and the worker refuse to start in
+     * exactly the configuration `.env.example` describes as the default.
      */
     BACKUP_ENCRYPTION_KEY: z
-      .string()
-      .regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex characters')
-      .optional(),
+      .union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 64 hex characters')])
+      .optional()
+      .transform((value) => value || undefined),
     /** Path to pg_dump, for images where it is not on PATH. */
     PG_DUMP_PATH: z.string().min(1).default('pg_dump'),
 
