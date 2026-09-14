@@ -16,6 +16,16 @@ async function signIn(page: Page, email: string) {
   await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
 }
 
+/**
+ * Signing out navigates on its own once the request lands. Reaching for the sign-in
+ * form before that redirect has happened races it - on a slow runner the test's own
+ * navigation is aborted by the page's - so wait for the form first.
+ */
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sair' }).click();
+  await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
+}
+
 function unique(prefix: string, testInfo: { project: { name: string }; title: string }) {
   const slug = testInfo.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 18);
   return `${prefix}-${testInfo.project.name}-${slug}-${Date.now()}`;
@@ -165,7 +175,7 @@ test.describe('deleting a file someone else uploaded', () => {
     });
     await expect(page.getByText('Concluído', { exact: true })).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole('button', { name: 'Sair' }).click();
+    await signOut(page);
 
     await signIn(page, contributor.email);
     await openFilesFor(page, companyName);
@@ -182,7 +192,7 @@ test.describe('deleting a file someone else uploaded', () => {
     // The file is still there until an admin decides.
     await expect(page.getByText('material.jpg').first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Sair' }).click();
+    await signOut(page);
     await signIn(page, adminUser.email);
 
     await page.getByRole('link', { name: 'Solicitações de exclusão', exact: true }).click();
