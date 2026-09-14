@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ProtectedRoute, CHANGE_PASSWORD_PATH } from './routes/ProtectedRoute';
@@ -27,8 +27,9 @@ import TopicDetailPage from './pages/TopicDetailPage';
 import BrandingPage from './pages/BrandingPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { BrandingProvider } from './modules/branding/BrandingProvider';
+import { handleSessionLost } from './modules/auth/session';
 
-const queryClient = new QueryClient({
+const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // A 401/403 is an authorization answer, not a transient failure worth retrying.
@@ -36,6 +37,10 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
+  // A session can end while the app is open — revoked elsewhere, or past its limit.
+  // Whichever request notices first sends the person back to sign-in.
+  queryCache: new QueryCache({ onError: (error) => handleSessionLost(queryClient, error) }),
+  mutationCache: new MutationCache({ onError: (error) => handleSessionLost(queryClient, error) }),
 });
 
 export default function App() {

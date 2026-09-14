@@ -3,12 +3,13 @@ import { Navigate } from 'react-router-dom';
 import { Alert, Button, Card, TextField } from '../../components/ui';
 import { strings } from '../../lib/strings';
 import { useBrand } from '../branding/context';
-import { useCurrentUser, useLogin } from './session';
+import { useCurrentUser, useLogin, useSessionLostMessage } from './session';
 
 export default function LoginPage() {
   const { data: currentUser } = useCurrentUser();
   const brand = useBrand();
   const login = useLogin();
+  const sessionLost = useSessionLostMessage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -44,7 +45,12 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-slate-900">{strings.login.title}</h2>
 
-            {login.isError && <Alert tone="error">{login.error.message}</Alert>}
+            {login.isError ? (
+              <Alert tone="error">{login.error.message}</Alert>
+            ) : (
+              // Why they are here, when the session ended while the app was open.
+              sessionLost && <Alert tone="error">{sessionLost}</Alert>
+            )}
 
             <TextField
               label={strings.login.email}

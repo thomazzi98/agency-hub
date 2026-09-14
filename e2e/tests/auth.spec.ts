@@ -153,3 +153,38 @@ test.describe('sessions screen', () => {
     await secondContext.close();
   });
 });
+
+test.describe('session expiry during use', () => {
+  /**
+   * A session can end while the app is open: revoked from another device, or past its
+   * absolute limit. The next request answers 401, and the screen must not be left
+   * showing a dead retry button — it has to hand the person back to sign-in.
+   */
+  test('a session revoked elsewhere sends the open tab back to sign-in on its next action', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    const user = manager(testInfo);
+    await submitLogin(page, user.email, E2E_PASSWORD);
+    await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+
+    // Another device signs in and revokes every other session, including this tab's.
+    const otherContext = await browser.newContext();
+    const otherPage = await otherContext.newPage();
+    await submitLogin(otherPage, user.email, E2E_PASSWORD);
+    await expect(otherPage.getByRole('heading', { name: 'Início' })).toBeVisible();
+    await otherPage.goto('/sessoes');
+    await expect(otherPage.getByText('Esta sessão')).toBeVisible();
+    otherPage.once('dialog', (dialog) => void dialog.accept());
+    await otherPage.getByRole('button', { name: 'Encerrar as outras sessões' }).click();
+    await expect(otherPage.getByText('Nenhuma outra sessão ativa.')).toBeVisible();
+    await otherContext.close();
+
+    // No reload: an in-app navigation is what the person actually does next.
+    await page.getByRole('link', { name: 'Projetos', exact: true }).click();
+
+    await expect(page).toHaveURL(/\/entrar/);
+    await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveText('Sua sessão expirou. Entre novamente.');
+  });
+});

@@ -23,6 +23,16 @@ export class ApiError extends Error {
     return this.status === 401;
   }
 
+  /**
+   * The session behind the cookie is gone — expired, revoked from another device, or
+   * its account deactivated. A wrong password at sign-in is also a 401 and is not this.
+   */
+  get isSessionLost(): boolean {
+    return (
+      this.status === 401 && (this.code === 'unauthenticated' || this.code === 'account_inactive')
+    );
+  }
+
   get requiresPasswordChange(): boolean {
     return this.code === 'password_change_required';
   }
