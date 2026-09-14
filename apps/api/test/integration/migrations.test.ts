@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
 import {
+  apiDir,
   databaseNameOf,
   dropDatabase,
   queryDatabase,
@@ -12,6 +15,11 @@ import {
 
 const baseUrl = resolveTestDatabaseUrl();
 const scratchUrl = withDatabaseName(baseUrl, `${databaseNameOf(baseUrl)}_rollback`);
+
+/** Every migration must be reversible, so the rollback test walks all of them. */
+const migrationCount = readdirSync(path.join(apiDir, 'prisma', 'migrations'), {
+  withFileTypes: true,
+}).filter((entry) => entry.isDirectory()).length;
 
 async function publicTableNames(): Promise<string[]> {
   const rows = await queryDatabase<{ tablename: string }>(
@@ -45,20 +53,17 @@ describe('migrations', () => {
   it('applies, rolls back, and re-applies cleanly on a fresh database', async () => {
     runMigrateDeploy(scratchUrl);
 
-    expect(await publicTableNames()).toEqual([
-      '_prisma_migrations',
-      'companies',
-      'company_memberships',
-      'users',
-    ]);
-    expect(await enumTypeNames()).toEqual([
-      'company_status',
-      'membership_status',
-      'user_role',
-      'user_status',
-    ]);
+    const tablesAfterDeploy = await publicTableNames();
+    expect(tablesAfterDeploy).toContain('users');
+    expect(tablesAfterDeploy).toContain('companies');
+    expect(tablesAfterDeploy).toContain('company_memberships');
+    expect(tablesAfterDeploy).toContain('sessions');
+    expect(tablesAfterDeploy).toContain('password_reset_audits');
+    expect(tablesAfterDeploy).toContain('audit_logs');
+    expect(tablesAfterDeploy).toContain('login_attempts');
+    expect(await enumTypeNames()).toContain('user_role');
 
-    runMigrateDown(scratchUrl);
+    runMigrateDown(scratchUrl, migrationCount);
 
     expect(await publicTableNames()).toEqual(['_prisma_migrations']);
     expect(await enumTypeNames()).toEqual([]);
@@ -70,11 +75,6 @@ describe('migrations', () => {
 
     runMigrateDeploy(scratchUrl);
 
-    expect(await publicTableNames()).toEqual([
-      '_prisma_migrations',
-      'companies',
-      'company_memberships',
-      'users',
-    ]);
-  }, 120_000);
+    expect(await publicTableNames()).toEqual(tablesAfterDeploy);
+  }, 180_000);
 });

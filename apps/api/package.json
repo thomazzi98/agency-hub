@@ -11,14 +11,18 @@
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc -p tsconfig.typecheck.json",
     "test": "vitest run",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:generate": "node scripts/prisma.mjs generate",
+    "db:migrate": "node scripts/prisma.mjs migrate dev",
+    "db:migrate:deploy": "node scripts/prisma.mjs migrate deploy",
     "db:migrate:down": "node scripts/migrate-down.mjs",
-    "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "db:studio": "node scripts/prisma.mjs studio",
+    "postinstall": "prisma generate",
+    "db:seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/cors": "^10.1.0",
+    "@node-rs/argon2": "^2.2.1",
     "@prisma/client": "^6.19.3",
     "dotenv": "^16.6.1",
     "fastify": "^5.0.0",

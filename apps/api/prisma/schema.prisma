@@ -52,22 +52,29 @@ enum MembershipStatus {
 /// Global identity. Access to any company comes exclusively through
 /// CompanyMembership — never from a column on this table.
 model User {
-  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name               String     @db.VarChar(160)
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String     @db.VarChar(160)
   /// Stored already lower-cased and trimmed by the application, so this unique
   /// index is effectively case-insensitive without a functional index.
-  email              String     @unique @db.VarChar(254)
-  passwordHash       String     @map("password_hash") @db.Text
-  role               UserRole
-  status             UserStatus @default(active)
-  mustChangePassword Boolean    @default(true) @map("must_change_password")
-  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  email               String     @unique @db.VarChar(254)
+  passwordHash        String     @map("password_hash") @db.Text
+  role                UserRole
+  status              UserStatus @default(active)
+  mustChangePassword  Boolean    @default(true) @map("must_change_password")
+  lastLoginAt         DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  /// Consecutive failures only; reset to zero on any successful login.
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?  @map("locked_until") @db.Timestamptz(6)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  memberships        CompanyMembership[] @relation("MembershipUser")
-  createdCompanies   Company[]           @relation("CompanyCreatedBy")
-  createdMemberships CompanyMembership[] @relation("MembershipCreatedBy")
+  memberships             CompanyMembership[]  @relation("MembershipUser")
+  createdCompanies        Company[]            @relation("CompanyCreatedBy")
+  createdMemberships      CompanyMembership[]  @relation("MembershipCreatedBy")
+  sessions                Session[]
+  auditLogs               AuditLog[]
+  passwordResetAudits     PasswordResetAudit[] @relation("PasswordResetTarget")
+  performedPasswordResets PasswordResetAudit[] @relation("PasswordResetPerformer")
 
   @@index([status])
   @@map("users")
@@ -90,6 +97,7 @@ model Company {
 
   createdBy   User?               @relation("CompanyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   memberships CompanyMembership[]
+  auditLogs   AuditLog[]
 
   @@index([status])
   @@index([createdById])
@@ -119,4 +127,91 @@ model CompanyMembership {
   @@index([userId, status])
   @@index([createdById])
   @@map("company_memberships")
+}
+
+enum PasswordResetAction {
+  temp_password_generated
+  password_reset
+
+  @@map("password_reset_action")
+}
+
+/// One row per active login. Server-side because the spec requires individually
+/// revocable sessions, which a stateless token cannot provide (ADR-0006).
+model Session {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  /// SHA-256 of the opaque token. The token itself is high-entropy random, so a
+  /// fast hash is sufficient here — unlike a password, it is not guessable.
+  sessionTokenHash   String    @unique @map("session_token_hash") @db.Char(64)
+  ipAddress          String?   @map("ip_address") @db.VarChar(45)
+  userAgent          String?   @map("user_agent") @db.VarChar(512)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastActiveAt       DateTime  @default(now()) @map("last_active_at") @db.Timestamptz(6)
+  /// Sliding expiry, pushed forward by activity.
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz(6)
+  /// Hard cap since the original login; activity never extends this.
+  absoluteExpiresAt  DateTime  @map("absolute_expires_at") @db.Timestamptz(6)
+  /// Last time the password was proven on this session; gates step-up
+  /// reauthentication for sensitive operations (ADR-0010).
+  passwordVerifiedAt DateTime  @map("password_verified_at") @db.Timestamptz(6)
+  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// Separate from audit_logs because the spec requires a dedicated, narrower trail
+/// for password actions (10-authentication-and-sessions.md).
+model PasswordResetAudit {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  targetUserId  String              @map("target_user_id") @db.Uuid
+  performedById String?             @map("performed_by") @db.Uuid
+  action        PasswordResetAction
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  targetUser  User  @relation("PasswordResetTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  performedBy User? @relation("PasswordResetPerformer", fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([targetUserId, createdAt(sort: Desc)])
+  @@index([performedById])
+  @@map("password_reset_audits")
+}
+
+/// Append-only security trail (16-security-requirements.md#audited-actions).
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  companyId  String?  @map("company_id") @db.Uuid
+  action     String   @db.VarChar(80)
+  entityType String?  @map("entity_type") @db.VarChar(60)
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json?    @db.JsonB
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor   User?    @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+/// Backs the per-IP login rate limit. Deliberately not derived from audit_logs:
+/// an audit retention policy must never be able to weaken a security control.
+model LoginAttempt {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String   @db.VarChar(254)
+  ipAddress  String   @map("ip_address") @db.VarChar(45)
+  successful Boolean
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ipAddress, createdAt(sort: Desc)])
+  @@index([createdAt])
+  @@map("login_attempts")
 }
