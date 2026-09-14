@@ -23,13 +23,15 @@
     "db:provision": "node scripts/provision-app-role.mjs",
     "db:setup": "npm run db:provision && npm run db:migrate:deploy",
     "dev:worker": "tsx watch src/worker.ts",
-    "start:worker": "node dist/worker.js"
+    "start:worker": "node dist/worker.js",
+    "storage:configure": "node scripts/configure-storage-bucket.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
     "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^10.1.0",
+    "@fastify/multipart": "^9.4.0",
     "@node-rs/argon2": "^2.2.1",
     "@prisma/client": "^6.19.3",
     "dotenv": "^16.6.1",

@@ -277,11 +277,13 @@ export const strings = {
     primaryColor: 'Cor principal',
     secondaryColor: 'Cor secundária',
     loginMessage: 'Mensagem na tela de login',
-    logoUrl: 'URL do logo',
-    faviconUrl: 'URL do favicon',
-    loginImageUrl: 'URL da imagem de login',
+    assets: 'Imagens da marca',
+    logoUrl: 'Logo',
+    faviconUrl: 'Favicon',
+    loginImageUrl: 'Imagem da tela de login',
     assetHint:
-      'Cole o endereço da imagem. O envio de arquivos chega junto com o módulo de uploads.',
+      'Logo até 2 MB (SVG, PNG ou WebP), favicon até 256 KB (PNG ou ICO), imagem de login até 4 MB (JPEG, PNG ou WebP).',
+    assetUploaded: 'Imagem atualizada.',
     contrastError: 'Contraste insuficiente com texto branco. Escolha um tom mais escuro.',
     contrastOk: (ratio: string, minimum: number) =>
       `Contraste com texto branco: ${ratio}:1 (mínimo ${minimum}:1).`,
@@ -331,6 +333,8 @@ export const strings = {
     unknown_project: 'Projeto não encontrado nesta empresa.',
     unknown_parent_folder: 'Pasta de destino não encontrada nesta empresa.',
     invalid_date_range: 'A data de término não pode ser anterior ao início.',
+    unknown_asset_kind: 'Tipo de imagem de marca desconhecido.',
+    file_missing: 'Nenhum arquivo foi enviado.',
     insufficient_contrast:
       'A cor escolhida não tem contraste suficiente com o texto branco. Escolha um tom mais escuro.',
     email_taken: 'Já existe um usuário com este e-mail.',

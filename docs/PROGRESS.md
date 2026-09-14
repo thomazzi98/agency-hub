@@ -420,22 +420,110 @@ uniqueness index, or the shared form controls in `apps/web/src/components/ui.tsx
 
 ---
 
+## Stage 6 - Upload architecture (mostly done; one acceptance item cannot be done here)
+
+**Status:** implemented and validated in automated tests, 2026-09-14. **Not signed
+off**, because the roadmap's acceptance criteria include a real-device validation pass
+that cannot be performed from this environment - see [What is not done](#stage-6--what-is-not-done) below.
+
+### Delivered
+
+- **Migration** `20260914063524_stage6_files_uploads_deletion_requests` (+ `down.sql`):
+  `files`, `upload_sessions`, `upload_parts`, `deletion_requests`, their RLS policies,
+  a partial index for the live-files query, and a partial unique index allowing one
+  pending deletion request per target.
+- **Storage layer** ([storage.ts](../apps/api/src/shared/storage.ts)) over the S3 API:
+  MinIO in development and tests, Cloudflare R2 in production, with nothing in the code
+  branching on which is behind `STORAGE_ENDPOINT`.
+- **Control plane** ([uploads](../apps/api/src/modules/uploads/routes.ts)): the six
+  endpoints from the spec plus `GET /uploads/config`, which hands the browser the same
+  limits the server enforces so it can split the file and refuse a bad one without a
+  round-trip.
+- **Files** ([files](../apps/api/src/modules/files/routes.ts)): list/detail/status,
+  short-lived signed downloads, soft delete.
+- **Deletion requests** ([deletion-requests](../apps/api/src/modules/deletion-requests/routes.ts)):
+  request, approve, reject - `agency_admin` only for review.
+- **Worker** ([worker.ts](../apps/api/src/worker.ts)) running pg-boss with the hourly
+  abandoned-upload cleanup, as its own container so a heavy job never competes with
+  request handling.
+- **Frontend:** an Uppy-driven uploader with per-file progress, pause, resume and
+  cancel; the merged files-and-folders screen; the admin deletion-request queue.
+- **Branding asset upload** (the item Stage 4 deferred): logo, favicon and login image,
+  with the limits recorded in Stage 4.
+- **[configure-storage-bucket.mjs](../apps/api/scripts/configure-storage-bucket.mjs):**
+  bucket CORS (the browser PUTs directly, and `ETag` must be an exposed header or
+  multipart completion has nothing to assemble from) and the 7-day
+  abort-incomplete-multipart lifecycle rule.
+
+### Bugs found by the tests
+
+1. **The uploader destroyed and rebuilt Uppy mid-transfer.** `onUploaded` was a
+   dependency of the effect owning the Uppy instance and changed identity on every
+   parent render, abandoning every part in flight. This would have broken real uploads,
+   not just tests; the E2E suite surfaced it as an intermittent failure.
+2. **Files chosen before Uppy finished initializing were silently dropped.** They are
+   now held and flushed on ready.
+3. **A branding asset path failed its own validation.** The upload endpoint produced
+   `/api/branding/assets/...` while the update schema demanded an absolute URL, so
+   re-saving the form rejected a value the server had just written.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| MinIO in `docker-compose.yml` for development and tests | No R2 credentials are needed to run or test the upload path, and the same S3 API code serves both. The test setup refuses any endpoint on `r2.cloudflarestorage.com` and requires a bucket name containing `test`, because `.env` holds real R2 credentials. |
+| `multiScoped` for handlers that call storage between database steps | One scoped transaction per step instead of one held open across a network call. The pool is sized for concurrent requests, not concurrent waits (ADR-0011). |
+| Part registration failures are swallowed on the client | The `upload_parts` table is a performance cache; completion reconciles against the provider's own `ListParts`, so correctness never depends on that call arriving. |
+| `uploadPartBytes` is hand-written | Uppy v4 exposes no per-part completion hook, and only XHR reports upload progress - on a slow connection that is the difference between a visible transfer and a frozen bar. |
+| Branding assets **do** pass through the API | The no-bytes-through-the-backend rule targets the 30 GB media path. A logo needs a *stable, public* URL, which a short-lived signed URL cannot be, and bucket objects are private. They are capped at 2 MB / 256 KB / 4 MB and served with `immutable` cache headers against a UUID key. |
+| The cleanup job treats "already gone at the provider" as success | A lifecycle rule or a partial previous run must not leave the row retrying forever. |
+| Completion requires every expected part | `ListParts` returning fewer parts than the declared size needs means the upload is genuinely incomplete; assembling it anyway would produce a truncated file that looks fine. |
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass |
+| Unit + integration | `npm test` | 192 passed / 14 files |
+| Upload control plane against real storage | `apps/api/test/integration/uploads.test.ts` | 19 passed - single-part and multi-part uploads of real bytes to MinIO, idempotent completion, refusal to complete while parts are missing, resume reconciled from the provider when the register call never arrived, abort actually releasing provider-side parts, and cross-tenant denial on every endpoint |
+| Files and deletion workflow | `apps/api/test/integration/files.test.ts` | 21 passed |
+| Cleanup job | `apps/api/test/integration/cleanup-job.test.ts` | 5 passed, including a real provider-side part being released |
+| Branding assets | `apps/api/test/integration/branding.test.ts` | 15 passed |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 54 passed - includes a real browser upload, a genuinely multipart one, a signed download URL that serves the right bytes and does not point at the API, and the full request-then-approve deletion path |
+
+### Stage 6 - what is not done
+
+1. **The real-device validation pass**
+   ([07-upload-architecture.md](sdd/07-upload-architecture.md#validation-plan-real-devices-and-unstable-networks),
+   [23-open-questions.md](sdd/23-open-questions.md) item 7) has **not** run. It requires
+   physical Android and iOS devices on real mobile data, including a genuinely unstable
+   connection, and files up to ~30 GB. None of that is possible from this environment.
+   **The 16 MiB chunk size and the concurrency defaults therefore remain documented
+   initial configuration, not measured optima** - which is exactly the status the spec
+   assigns them until this pass runs. Every one of those numbers is an environment
+   variable, so adjusting them after the pass needs no code change.
+2. **The bucket CORS and lifecycle rules have not been applied to the real R2 bucket.**
+   The script exists and was exercised against MinIO, which reports that it implements
+   neither (it allows all origins and rejects an abort-only lifecycle rule). Running it
+   against production R2 changes a live resource, so it needs an explicit decision:
+   `npm run storage:configure --workspace=@agency-hub/api -- --origin https://your-domain`
+   with `STORAGE_*` pointed at R2. **Direct browser uploads to R2 will fail without the
+   CORS rule.**
+3. **Deletion requests for `content` targets** return `unsupported_target` until Stage 8
+   creates the `content` table. The enum value and the whole workflow already exist, so
+   that stage only has to resolve the target.
+
+---
+
 ## Next step
 
-**Stage 6 - Upload architecture** ([roadmap](sdd/21-mvp-roadmap.md#stage-6--upload-architecture-the-critical-path)).
-The roadmap calls this the highest-risk, highest-value stage and says not to split or
-rush it.
+**Stage 7 - Notes, comments, and follow-up topics**
+([roadmap](sdd/21-mvp-roadmap.md#stage-7--notes-comments-and-follow-up-topics)).
 
-Read [07-upload-architecture.md](sdd/07-upload-architecture.md) in full first. Concrete
-first action: add the `upload_sessions`, `upload_parts`, `files`, and
-`deletion_requests` tables plus their RLS policies in one migration (with `down.sql`),
-then build the presign/parts/complete/abort control plane against R2.
-
-Two things to settle at the start of that stage:
-- **Local development without R2 credentials.** Add MinIO to `docker-compose.yml` for
-  development and tests only, with production pointing at real R2 through
-  `R2_ENDPOINT`. The `.env` already carries real R2 credentials, so an integration
-  test must never be pointed at them by accident - guard it the way the `_test`
-  database-name check does.
-- **Branding asset upload** now fills the existing `logoUrl` / `faviconUrl` /
-  `loginImageUrl` fields, with the limits recorded in Stage 4 above.
+Concrete first action: add the `comments`, `topics` and `topic_replies` tables with
+their RLS policies in one migration (with `down.sql`), then build `modules/comments`
+and `modules/topics` with `tenantScoped()`. Note that `comments.commentable_type`
+covers `company | project | file | content | pending_request`, but `content` and
+`pending_request` do not exist until Stages 8 and 10 - resolve the ones that do and
+return `unsupported_target` for the rest, the way the deletion-request module already
+handles `content`.

@@ -2,7 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Button, Card, TextField } from '../components/ui';
 import { MINIMUM_CONTRAST_RATIO, contrastRatio, meetsMinimumContrast } from '../lib/color';
 import { strings } from '../lib/strings';
-import { useBranding, useUpdateBranding, type BrandingInput } from '../modules/branding/api';
+import {
+  useBranding,
+  useUpdateBranding,
+  useUploadBrandingAsset,
+  type BrandingAssetKind,
+  type BrandingInput,
+} from '../modules/branding/api';
 
 interface FormState {
   appName: string;
@@ -61,6 +67,53 @@ function ColorField({
           {strings.branding.contrastOk(ratio.toFixed(1), MINIMUM_CONTRAST_RATIO)}
         </p>
       )}
+    </div>
+  );
+}
+
+function AssetUpload({
+  kind,
+  label,
+  accept,
+  currentUrl,
+}: {
+  kind: BrandingAssetKind;
+  label: string;
+  accept: string;
+  currentUrl: string;
+}) {
+  const upload = useUploadBrandingAsset();
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {currentUrl && (
+          <img
+            src={currentUrl}
+            alt={label}
+            className="h-10 w-auto rounded border border-slate-200"
+          />
+        )}
+        <div className="flex-1">
+          <label className="text-sm font-medium text-slate-700" htmlFor={`asset-${kind}`}>
+            {label}
+          </label>
+          <input
+            id={`asset-${kind}`}
+            type="file"
+            accept={accept}
+            disabled={upload.isPending}
+            className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:min-h-9 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) upload.mutate({ kind, file });
+              event.target.value = '';
+            }}
+          />
+        </div>
+      </div>
+      {upload.isError && <Alert tone="error">{upload.error.message}</Alert>}
+      {upload.isSuccess && <Alert tone="success">{strings.branding.assetUploaded}</Alert>}
     </div>
   );
 }
@@ -145,33 +198,36 @@ export default function BrandingPage() {
             onChange={(event) => setForm((p) => ({ ...p, loginMessage: event.target.value }))}
           />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              label={strings.branding.logoUrl}
-              type="url"
-              hint={strings.branding.assetHint}
-              value={form.logoUrl}
-              onChange={(event) => setForm((p) => ({ ...p, logoUrl: event.target.value }))}
-            />
-            <TextField
-              label={strings.branding.faviconUrl}
-              type="url"
-              value={form.faviconUrl}
-              onChange={(event) => setForm((p) => ({ ...p, faviconUrl: event.target.value }))}
-            />
-          </div>
-
-          <TextField
-            label={strings.branding.loginImageUrl}
-            type="url"
-            value={form.loginImageUrl}
-            onChange={(event) => setForm((p) => ({ ...p, loginImageUrl: event.target.value }))}
-          />
-
           <Button type="submit" isLoading={update.isPending} disabled={blocked}>
             {strings.common.save}
           </Button>
         </form>
+      </Card>
+
+      <Card className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">{strings.branding.assets}</h2>
+          <p className="mt-1 text-xs text-slate-500">{strings.branding.assetHint}</p>
+        </div>
+
+        <AssetUpload
+          kind="logo"
+          label={strings.branding.logoUrl}
+          accept="image/svg+xml,image/png,image/webp"
+          currentUrl={form.logoUrl}
+        />
+        <AssetUpload
+          kind="favicon"
+          label={strings.branding.faviconUrl}
+          accept="image/png,image/x-icon,.ico"
+          currentUrl={form.faviconUrl}
+        />
+        <AssetUpload
+          kind="loginImage"
+          label={strings.branding.loginImageUrl}
+          accept="image/jpeg,image/png,image/webp"
+          currentUrl={form.loginImageUrl}
+        />
       </Card>
 
       <Card className="flex flex-col gap-3">

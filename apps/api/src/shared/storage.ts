@@ -1,5 +1,6 @@
 import {
   AbortMultipartUploadCommand,
+  PutObjectCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
@@ -221,4 +222,43 @@ export async function headObject(storageKey: string): Promise<{ sizeBytes: numbe
 
 export async function deleteObject(storageKey: string): Promise<void> {
   await getStorageClient().send(new DeleteObjectCommand({ Bucket: bucket(), Key: storageKey }));
+}
+
+/**
+ * A whole-object put, used only for the few small branding assets that legitimately
+ * pass through this process (modules/branding/assets.ts). Everything else uploads
+ * directly from the browser.
+ */
+export async function putObject(input: {
+  storageKey: string;
+  body: Buffer;
+  mimeType: string;
+}): Promise<void> {
+  await getStorageClient().send(
+    new PutObjectCommand({
+      Bucket: bucket(),
+      Key: input.storageKey,
+      Body: input.body,
+      ContentType: input.mimeType,
+    }),
+  );
+}
+
+export interface StoredObject {
+  body: Uint8Array;
+  mimeType: string;
+}
+
+export async function readObject(storageKey: string): Promise<StoredObject | null> {
+  try {
+    const response = await getStorageClient().send(
+      new GetObjectCommand({ Bucket: bucket(), Key: storageKey }),
+    );
+    const body = await response.Body?.transformToByteArray();
+    if (!body) return null;
+
+    return { body, mimeType: response.ContentType ?? 'application/octet-stream' };
+  } catch {
+    return null;
+  }
 }

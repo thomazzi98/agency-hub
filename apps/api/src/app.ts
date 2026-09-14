@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import type { PrismaClient } from '@prisma/client';
 import { ZodError } from 'zod';
 import { getEnv } from './config/env.js';
@@ -73,6 +74,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   );
 
   app.register(cookie);
+  // Only the branding-asset route uses this; the media path never sends bytes here, so
+  // the ceiling is deliberately small enough to be uninteresting as an attack surface.
+  app.register(multipart, { limits: { fileSize: 4 * 1024 * 1024, files: 1 } });
 
   if (env.corsOrigins.length > 0) {
     app.register(cors, { origin: env.corsOrigins, credentials: true });
