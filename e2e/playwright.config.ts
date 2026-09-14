@@ -52,6 +52,10 @@ export default defineConfig({
         API_PORT: String(API_PORT),
         DATABASE_URL: databaseUrl,
         SESSION_COOKIE_SECURE: 'false',
+        // Every browser in this suite shares one loopback address, so the per-IP
+        // login limit would trip partway through a run. The limit itself is proven
+        // by the integration suite, which controls the source IP per case.
+        LOGIN_IP_MAX_ATTEMPTS_PER_HOUR: '10000',
       },
     },
     {

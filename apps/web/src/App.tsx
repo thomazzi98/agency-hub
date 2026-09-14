@@ -6,6 +6,11 @@ import LoginPage from './modules/auth/LoginPage';
 import ChangePasswordPage from './modules/auth/ChangePasswordPage';
 import HomePage from './pages/HomePage';
 import SessionsPage from './pages/SessionsPage';
+import CompaniesPage from './pages/CompaniesPage';
+import CompanyFormPage from './pages/CompanyFormPage';
+import UsersPage from './pages/UsersPage';
+import UserFormPage from './pages/UserFormPage';
+import { AdminRoute } from './routes/AdminRoute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +46,62 @@ export default function App() {
                   <HomePage />
                 </AppShell>
               </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/empresas"
+            element={
+              <ProtectedRoute>
+                <AppShell>
+                  <CompaniesPage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/empresas/nova"
+            element={
+              <AdminRoute>
+                <CompanyFormPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="/empresas/:id"
+            element={
+              <AdminRoute>
+                <CompanyFormPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="/usuarios"
+            element={
+              <AdminRoute>
+                <UsersPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="/usuarios/novo"
+            element={
+              <AdminRoute>
+                <UserFormPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="/usuarios/:id"
+            element={
+              <AdminRoute>
+                <UserFormPage />
+              </AdminRoute>
             }
           />
 

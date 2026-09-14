@@ -192,14 +192,107 @@ the session service, the Prisma schema, or the `/api` route registration.
 
 ---
 
+## Stage 3 - Companies, users, roles, and tenant isolation (done)
+
+**Status:** complete, validated 2026-09-14. The roadmap flags this as the
+highest-consequence stage in the project; it took three commits.
+
+### The RLS blocker found in Stage 2, resolved
+
+PostgreSQL ignores every RLS policy for a superuser and for a table owner, and the
+Postgres image creates `POSTGRES_USER` as a superuser. Written as specified, the
+policies would have existed and never applied.
+
+- The application now connects as **`agency_hub_app`**: `NOSUPERUSER`,
+  `NOBYPASSRLS`, owns nothing, holds only DML privileges, and cannot run DDL.
+  Created by [provision-app-role.mjs](../apps/api/scripts/provision-app-role.mjs)
+  from the credentials already in `DATABASE_URL`.
+- Migrations, test-database creation, and rollback use the **owner** role instead,
+  resolved by swapping credentials via `DB_OWNER_USER` / `DB_OWNER_PASSWORD`
+  ([database-url.mjs](../apps/api/scripts/database-url.mjs)).
+- The API **refuses to start** if its role is a superuser or carries BYPASSRLS
+  (`assertLeastPrivilegeDatabaseRole`), because that misconfiguration has no symptom
+  until it is a cross-tenant leak.
+
+### Delivered
+
+- **Migration** `20260914060000_stage3_row_level_security` (+ `down.sql`): RLS on
+  `companies`, `company_memberships`, and `audit_logs`, with two SQL helper functions
+  (`app_bypass_rls()`, `app_current_company_ids()`). `audit_logs` gets SELECT and
+  INSERT policies **only**, so UPDATE and DELETE are denied by the database - the
+  table is append-only in fact, not by convention.
+- **[tenant-scope.ts](../apps/api/src/shared/tenant-scope.ts):** `withTenantScope`,
+  `withSystemScope`, and the `tenantScoped()` route wrapper that hands a handler an
+  already-scoped client, exactly as [14-database-design.md](sdd/14-database-design.md)
+  requires. Route authors never touch `app.prisma`.
+- **[permissions.ts](../apps/api/src/shared/permissions.ts)** and
+  **[pagination.ts](../apps/api/src/shared/pagination.ts)** (page/pageSize with a
+  server-enforced max, and an allow-list for sortable columns).
+- **Modules:** `companies` (list/detail/create/edit/archive/restore),
+  `users` (list/detail/create/edit/reset-password), `memberships`
+  (list/grant/update/revoke).
+- **Frontend:** companies list + form, users list + form, per-membership permission
+  toggles, one-time temporary-password dialog, admin-only navigation and route guard.
+- **E2E:** [administration.spec.ts](../e2e/tests/administration.spec.ts) covering the
+  company lifecycle, the admin-only guard, user creation with the one-time password,
+  and membership grant/override/revoke - on desktop and mobile viewports.
+
+### Bugs the tests caught (both looked correct while reading)
+
+1. **A scoped handler that called `reply.send()` replied before its transaction
+   committed** - a client could be told a write succeeded and then not see it on the
+   next request, or be told it succeeded when the commit later failed. Handlers now
+   return their payload and set the status with `reply.code()`; `tenantScoped` throws
+   if a handler sends inside the transaction.
+2. **The company lookup spread the scope filter over the id filter**
+   (`{ id, ...{ id: { in: scope } } }`), dropping the requested id and returning
+   whichever company the actor could reach. Now an explicit `AND`.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| Two database roles (owner for DDL, app role for runtime) rather than one owner with `FORCE ROW LEVEL SECURITY` | One role would also let application code run DDL. Two roles cost three environment variables and remove that entire class of blast radius. |
+| Cross-tenant reads return `404` with a body byte-identical to a never-existing id | A `403` would confirm the id belongs to a real company in another tenant. Role-based denials (e.g. a contributor creating a company) still return `403`. |
+| Revoking a membership or deactivating a user drops that user's sessions immediately | "Access is removed at once" and "access is removed when the session happens to expire" are very different promises; the spec asks for the first. |
+| Re-granting a revoked membership reactivates the existing row | Keeps the unique `(user, company)` pair and the row's history intact instead of creating a second record of the same relationship. |
+| An admin cannot change their own role or deactivate themselves (`422`) | That is how an installation ends up with no reachable administrator, and there is no recovery path through the product. |
+| Company list defaults to `status=active` | Archiving must hide a company from active lists ([03-functional-requirements.md](sdd/03-functional-requirements.md#companies)); `?status=archived` and `?status=all` remain available. |
+| `LOGIN_IP_MAX_ATTEMPTS_PER_HOUR` is raised for the E2E API only | Every browser in the suite shares one loopback address. The limit itself is proven by the integration suite, which controls the source IP per case. |
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass (api, web, e2e) |
+| Unit + integration | `npm test` | 91 passed / 8 files |
+| RLS behaviour | `apps/api/test/integration/rls.test.ts` | 11 passed - includes 24 concurrent scoped transactions never leaking a tenant context across the pool, a known company id invisible from outside its tenant, the role being unable to run DDL, and `audit_logs` refusing UPDATE/DELETE even under the bypass |
+| Cross-tenant + permission matrix | `apps/api/test/integration/tenant-isolation.test.ts` | 32 passed across all four roles |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 26 passed / 2 projects |
+| Clean bootstrap from an empty volume | `docker compose up -d --build` | role provisioned, 3 migrations applied, `api` healthy |
+
+**Still open from the roadmap:** the connection-pool load test under realistic
+concurrency ([23-open-questions.md](sdd/23-open-questions.md) item 8). The RLS
+concurrency test exercises 24 simultaneous scoped transactions against a pool of 10
+without exhaustion, which is evidence but not the load test the roadmap asks for.
+
+**What would invalidate this:** changes to `tenant-scope.ts`, `permissions.ts`, the
+RLS migration, the provisioning script, or any new tenant-owned table (which needs
+its own RLS policy **and** a cross-tenant test).
+
+---
+
 ## Next step
 
-**Stage 3 — Companies, users, roles, and tenant isolation**
-([roadmap](sdd/21-mvp-roadmap.md#stage-3--companies-users-roles-and-tenant-isolation)).
-The roadmap flags this as the highest-consequence stage in the project.
+**Stage 4 - Branding settings** ([roadmap](sdd/21-mvp-roadmap.md#stage-4--branding-settings)).
 
-Concrete first action: write the migration that creates the non-superuser
-application role and enables RLS (`FORCE ROW LEVEL SECURITY` is not enough on its own
-— see the blocker above), then build `shared/tenant-scope.ts` with the mandatory
-Prisma interactive-transaction + `set_config(..., true)` pattern from
-[14-database-design.md](sdd/14-database-design.md), before any company/user CRUD.
+The roadmap allows resequencing Stage 4 after Stage 6 so branding assets can reuse
+the real upload system. Decision for the next session: implement Stage 4 now with
+**colours, app name, and login message only** (no asset upload), and add logo/favicon
+upload once Stage 6 exists - that keeps the theming plumbing in place early without
+building a throwaway upload path. Record the outcome here.
+
+Concrete first action: add the `branding_settings` single-row table plus migration
+(with `down.sql`), then `GET /api/branding` (public, needed by the login screen
+before authentication) and `PATCH /api/branding` (agency_admin only), with WCAG AA
+contrast validation on the submitted colours.

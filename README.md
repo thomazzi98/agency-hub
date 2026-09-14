@@ -6,7 +6,7 @@ A multi-tenant, mobile-first web platform that centralizes a social media, conte
 
 ## Status
 
-**Stage 2 complete: authentication, sessions, and the first real screens.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
+**Stage 3 complete: authentication, companies, users, roles, and enforced tenant isolation.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Local development
 
@@ -19,8 +19,8 @@ cp .env.example .env
 # Start PostgreSQL
 docker compose up -d postgres
 
-# Apply migrations and create the first administrator
-npm run db:migrate:deploy --workspace=@agency-hub/api
+# Create the least-privilege application role, migrate, and seed the first admin
+npm run db:setup --workspace=@agency-hub/api
 npm run db:seed --workspace=@agency-hub/api   # prints the temporary password once
 
 # Backend (http://localhost:3000/health)
@@ -45,11 +45,14 @@ Migrations live in `apps/api/prisma/migrations/`. Each directory holds Prisma's 
 
 ```bash
 cd apps/api
+npm run db:provision          # create/refresh the least-privilege application role
 npm run db:migrate            # create + apply a migration in development
 npm run db:migrate:deploy     # apply pending migrations (CI/production)
 npm run db:migrate:down       # roll back the most recent migration
 npm run db:studio             # browse data
 ```
+
+**Two database roles, on purpose.** PostgreSQL ignores Row-Level Security for superusers _and_ for table owners, so an application connecting as either would have tenant-isolation policies that exist and never apply. `DATABASE_URL` therefore points at `agency_hub_app` - no superuser, no `BYPASSRLS`, no DDL - while migrations and database management use the owner named by `DB_OWNER_USER`/`DB_OWNER_PASSWORD`. The API refuses to start if its role can bypass RLS.
 
 ### Tests
 
@@ -92,4 +95,4 @@ The E2E suite starts its own API and web server on dedicated ports and uses `E2E
 
 ## Next step
 
-Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–2 (scaffolding, schema baseline, authentication) are done; Stage 3 (companies, users, roles, and tenant isolation) is next. See [docs/PROGRESS.md](docs/PROGRESS.md).
+Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–3 are done (scaffolding, schema baseline, authentication, and the companies/users/roles foundation with enforced tenant isolation); Stage 4 (branding settings) is next. See [docs/PROGRESS.md](docs/PROGRESS.md).

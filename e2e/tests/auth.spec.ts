@@ -3,9 +3,16 @@ import { E2E_PASSWORD, admin, manager, temporaryUser } from '../fixtures';
 
 async function submitLogin(page: Page, email: string, password: string) {
   await page.goto('/entrar');
+  // A preceding sign-out navigates on its own, so wait for the form rather than
+  // assuming `goto` landed on it.
+  await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
+
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/api/auth/login')),
+    page.getByRole('button', { name: 'Entrar' }).click(),
+  ]);
 }
 
 test.describe('login', () => {
@@ -107,6 +114,21 @@ test.describe('sessions screen', () => {
   test('marks the current session and lists the others', async ({ page, browser }, testInfo) => {
     const user = admin(testInfo);
     await submitLogin(page, user.email, E2E_PASSWORD);
+    // Wait for the session cookie to be set before navigating, or the next goto
+    // races the login request and lands back on the sign-in screen.
+    await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+
+    // Other specs sign in as the same fixture account, so start from a known state.
+    await page.goto('/sessoes');
+    // `count()` does not auto-wait, so let the list render before asking.
+    await expect(page.getByText('Esta sessão')).toBeVisible();
+
+    const revokeOthers = page.getByRole('button', { name: 'Encerrar as outras sessões' });
+    if ((await revokeOthers.count()) > 0) {
+      page.once('dialog', (dialog) => void dialog.accept());
+      await revokeOthers.click();
+      await expect(page.getByText('Nenhuma outra sessão ativa.')).toBeVisible();
+    }
 
     const secondContext = await browser.newContext();
     const secondPage = await secondContext.newPage();

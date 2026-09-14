@@ -36,10 +36,22 @@ export interface RequestOptions {
 
 const API_BASE = '/api';
 
-export async function apiRequest<TData>(
+export interface PageMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface Envelope<TData> {
+  data: TData;
+  /** Present only on paginated list endpoints (15-api-conventions.md). */
+  meta?: PageMeta;
+}
+
+export async function apiEnvelope<TData>(
   path: string,
   options: RequestOptions = {},
-): Promise<TData> {
+): Promise<Envelope<TData>> {
   let response: Response;
 
   try {
@@ -59,11 +71,12 @@ export async function apiRequest<TData>(
   }
 
   if (response.status === 204) {
-    return undefined as TData;
+    return { data: undefined as TData };
   }
 
   const payload = (await response.json().catch(() => null)) as {
     data?: TData;
+    meta?: PageMeta;
     error?: { code: string; details?: ApiErrorDetail[] };
   } | null;
 
@@ -75,5 +88,21 @@ export async function apiRequest<TData>(
     );
   }
 
-  return payload?.data as TData;
+  return { data: payload?.data as TData, meta: payload?.meta };
+}
+
+export async function apiRequest<TData>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<TData> {
+  return (await apiEnvelope<TData>(path, options)).data;
+}
+
+export function queryString(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `?${query}` : '';
 }
