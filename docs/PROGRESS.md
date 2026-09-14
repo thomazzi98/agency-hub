@@ -621,18 +621,84 @@ only one left (Stage 10).
 
 ---
 
+## Stage 9 - Multi-network publications (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage9_publications` (+ `down.sql`): the `publications` table, the
+  `UNIQUE (content_id, network)` natural key from
+  [14-database-design.md](sdd/14-database-design.md), and an RLS policy that reaches
+  `company_id` **through the parent content** - the same shape `topic_replies` uses,
+  because the table deliberately has no `company_id` of its own.
+- **[publications](../apps/api/src/modules/publications/routes.ts):** the per-content
+  network list, a single `PUT` that registers *and* updates one network's record,
+  `DELETE` to stop tracking a network, and `GET /publications` - the cross-content view
+  the "pending publications" dashboards need.
+- **`GET /content/summary`** now carries `pendingPublication` and `failedPublication`,
+  the aggregate Stage 8 could not compute because the table did not exist.
+- **Content rows carry their networks.** The calendar, the list and the detail endpoint
+  all embed the publication records, read in one extra query for the whole page rather
+  than one per row.
+- **Frontend:** network chips on every content row (all four networks always shown, so
+  "no record" is as visible as "published"), a per-network dialog, and a **Publicações**
+  page with a "somente pendentes" filter.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| One `PUT /content/:id/publications/:network` instead of POST + PATCH | The row's identity *is* `(content, network)`. Splitting it would make the client ask "does this exist yet?" before every write, and a double submit would race against the unique index. |
+| Marking a post published with no date stamps *now* | A publication record with no date is a log nobody can audit later. Now is what the person clicking "published" means; the field is there for when they disagree. |
+| `not_planned` refuses a date or a link | It is the one status that asserts nothing happened, so carrying evidence of a post would contradict itself. Enforced server-side, and the form disables the fields to match. |
+| Removing a record is kept distinct from `not_planned` | "We decided not to post here" is a decision worth recording; "we are not tracking this network" is the absence of one. Collapsing them would lose the first. |
+| Publications never change the content's production status | Auto-completing a content item when its last network goes out is a rule the spec does not state, and an automatic status change that nobody asked for is hard to trust. |
+| `failed` is counted separately from pending | Both are unfinished, but a failure needs a retry and a pending post needs a nudge. One number could not drive both. |
+| The tone for each publication status lives in [lib/tones.ts](../apps/web/src/lib/tones.ts) | [12-ui-ux-guidelines.md](sdd/12-ui-ux-guidelines.md) requires one visual treatment per status everywhere it appears; a shared map is the only way that stays true as screens are added. |
+
+### Added while here
+
+`rls.test.ts` now asserts that **every** tenant-owned table has RLS enabled and a
+`tenant_isolation` policy, against an explicit list. A stage that adds a tenant table
+and forgets its policy now fails a test instead of shipping a silently readable table -
+which is exactly the class of mistake the two-database-roles finding in Stage 3 showed
+this project can make.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass |
+| Unit + integration | `npm test` | 267 passed / 17 files |
+| Publications | `apps/api/test/integration/publications.test.ts` | 27 passed - the upsert writing one row twice, per-network independence, the date stamp, the `not_planned` refusal, both aggregates, the role matrix, and a cross-tenant read that is byte-identical to a missing id |
+| RLS coverage | `apps/api/test/integration/rls.test.ts` | 12 passed - including the new every-tenant-table check |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 68 passed |
+
+### What is not done
+
+A publication cannot be commented on or made a follow-up topic's subject: neither
+`commentable_type` nor `topic_related_type` has a publication member, in the schema or
+in [14-database-design.md](sdd/14-database-design.md) that defines them. That matches
+the spec - the discussion belongs on the content item, not on one of its network rows -
+so this is recorded as intended, not as a gap to close later.
+
+---
+
 ## Next step
 
-**Stage 9 - Multi-network publications**
-([roadmap](sdd/21-mvp-roadmap.md#stage-9--multi-network-publications)).
+**Stage 10 - Pending requests**
+([roadmap](sdd/21-mvp-roadmap.md#stage-10--pending-requests)).
 
-Concrete first action: add the `publications` table in one migration (with `down.sql`),
-with its RLS policy expressed through its parent content (it has no `company_id` of its
-own, like `topic_replies` and `upload_parts`) and the `UNIQUE (content_id, network)`
-constraint from [14-database-design.md](sdd/14-database-design.md).
+Concrete first action: add the `pending_requests` table in one migration (with
+`down.sql`), with its own `company_id` and the direct `tenant_isolation` policy, plus
+the status enum from [14-database-design.md](sdd/14-database-design.md)
+(`open|awaiting_client|answered|in_review|completed|cancelled`).
 
-Then extend `GET /content/summary` with the "pending publication" count the production
-tracking section of
-[03-functional-requirements.md](sdd/03-functional-requirements.md#production-tracking)
-asks for - it is the one aggregate Stage 8 could not compute, because publications did
-not exist yet.
+Then close the **last placeholder** in the codebase: `pending_request` is currently the
+only unsupported `commentable_type` and the only unsupported deletion/comment target,
+pinned by a test in `comments-topics.test.ts` that will need to flip once the table
+exists. Responses reuse the comment infrastructure from Stage 7, with an optional
+attached file from Stage 6 - and the acceptance criterion is specifically that a
+recipient can respond **from a mobile viewport**, so that flow needs an E2E test in the
+mobile project, not only the desktop one.

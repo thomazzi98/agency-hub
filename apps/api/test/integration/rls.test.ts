@@ -66,6 +66,50 @@ describe('database role', () => {
   });
 });
 
+/**
+ * Every table that belongs to a tenant, whether it carries `company_id` itself or
+ * reaches one through a parent (14-database-design.md#row-level-security). Adding a
+ * tenant table without adding it here is the mistake this list exists to catch: the
+ * check below fails for a table that is listed but unprotected, and the reviewer of a
+ * new migration has to decide, deliberately, which list a new table belongs in.
+ */
+const TENANT_TABLES = [
+  'companies',
+  'company_memberships',
+  'projects',
+  'folders',
+  'files',
+  'upload_sessions',
+  'upload_parts',
+  'deletion_requests',
+  'comments',
+  'topics',
+  'topic_replies',
+  'content',
+  'publications',
+];
+
+describe('row-level security coverage', () => {
+  it('protects every tenant-owned table with a tenant_isolation policy', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; enabled: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table,
+             c.relrowsecurity AS enabled,
+             count(p.polname) FILTER (WHERE p.polname = 'tenant_isolation') AS policies
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_policy p ON p.polrelid = c.oid
+       WHERE n.nspname = 'public'
+         AND c.relname = ANY (${TENANT_TABLES})
+       GROUP BY c.relname, c.relrowsecurity
+    `;
+
+    expect(rows.map((row) => row.table).sort()).toEqual([...TENANT_TABLES].sort());
+    expect(
+      rows.filter((row) => !row.enabled || row.policies === 0n).map((row) => row.table),
+    ).toEqual([]);
+  });
+});
+
 describe('row-level security', () => {
   it('returns nothing from a tenant-owned table with no scope set', async () => {
     const companies = await prisma.company.findMany();

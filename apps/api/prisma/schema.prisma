@@ -88,6 +88,7 @@ model User {
   createdTopics           Topic[]              @relation("TopicCreator")
   responsibleTopics       Topic[]              @relation("TopicResponsible")
   topicReplies            TopicReply[]         @relation("TopicReplyAuthor")
+  responsiblePublications Publication[]        @relation("PublicationResponsible")
 
   @@index([status])
   @@map("users")
@@ -269,6 +270,27 @@ enum ProductionStatus {
   cancelled
 
   @@map("production_status")
+}
+
+enum PublicationNetwork {
+  instagram
+  facebook
+  tiktok
+  youtube_shorts
+
+  @@map("publication_network")
+}
+
+enum PublicationStatus {
+  not_planned
+  planned
+  scheduled
+  published
+  not_published
+  failed
+  cancelled
+
+  @@map("publication_status")
 }
 
 enum PasswordResetAction {
@@ -642,6 +664,7 @@ model Content {
   company         Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   project         Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
   responsibleUser User?    @relation("ContentResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  publications    Publication[]
   relatedFile     File?    @relation("ContentRelatedFile", fields: [relatedFileId], references: [id], onDelete: Restrict)
   createdBy       User?    @relation("ContentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
@@ -654,4 +677,31 @@ model Content {
   @@index([relatedFileId])
   @@index([createdById])
   @@map("content")
+}
+
+/// One network's publication record for a content item. Phase 1 is a manual log: the
+/// agency records what it posted where, nothing is scheduled or published through an
+/// API (03-functional-requirements.md#multi-network-publication-log).
+model Publication {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId         String             @map("content_id") @db.Uuid
+  network           PublicationNetwork
+  status            PublicationStatus  @default(planned)
+  /// The publication date: when it went out, or when it is meant to go out while the
+  /// record is still `planned`/`scheduled`. The spec has one date field, not two.
+  publishedAt       DateTime?          @map("published_at") @db.Timestamptz(6)
+  link              String?            @db.VarChar(2048)
+  responsibleUserId String?            @map("responsible_user_id") @db.Uuid
+  notes             String?            @db.Text
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  content         Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  responsibleUser User?   @relation("PublicationResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+
+  /// One record per network per content item (14-database-design.md).
+  @@unique([contentId, network])
+  @@index([status, publishedAt])
+  @@index([responsibleUserId])
+  @@map("publications")
 }

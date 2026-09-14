@@ -8,6 +8,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { strings } from '../lib/strings';
+import { toneClasses, type BadgeTone } from '../lib/tones';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger';
 
@@ -299,22 +300,10 @@ export function Pagination({
   );
 }
 
-export function Badge({
-  tone,
-  children,
-}: {
-  tone: 'neutral' | 'success' | 'warning';
-  children: ReactNode;
-}) {
-  const tones = {
-    neutral: 'bg-slate-100 text-slate-700 ring-slate-200',
-    success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    warning: 'bg-amber-50 text-amber-800 ring-amber-200',
-  } as const;
-
+export function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${tones[tone]}`}
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${toneClasses[tone]}`}
     >
       {children}
     </span>

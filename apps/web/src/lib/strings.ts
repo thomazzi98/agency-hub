@@ -317,7 +317,48 @@ export const strings = {
       inReview: 'Em revisão',
       completed: 'Concluídos',
       overdue: 'Atrasados',
+      pendingPublication: 'A publicar',
+      failedPublication: 'Falhas',
     },
+  },
+  publications: {
+    title: 'Publicações',
+    heading: 'Publicação por rede',
+    hint: 'Registre manualmente onde este conteúdo foi publicado.',
+    network: 'Rede',
+    status: 'Situação',
+    publishedAt: 'Data da publicação',
+    link: 'Link da publicação',
+    responsible: 'Responsável',
+    notes: 'Observações',
+    register: 'Registrar',
+    edit: 'Editar registro',
+    notTracked: 'Sem registro',
+    remove: 'Remover registro',
+    confirmRemove: 'Remover o registro desta rede? O histórico de publicação dela é apagado.',
+    removed: 'Registro removido.',
+    saved: 'Publicação registrada.',
+    openLink: 'Abrir publicação',
+    lastUpdate: (when: string) => `Atualizado em ${when}`,
+    doneCount: (done: number, total: number) => `${done} de ${total} redes publicadas`,
+    pendingOnly: 'Somente pendentes',
+    empty: 'Nenhuma publicação registrada.',
+    emptyHint: 'Abra um conteúdo no calendário para registrar onde ele foi publicado.',
+  },
+  networks: {
+    instagram: 'Instagram',
+    facebook: 'Facebook',
+    tiktok: 'TikTok',
+    youtube_shorts: 'YouTube Shorts',
+  },
+  publicationStatuses: {
+    not_planned: 'Não planejada',
+    planned: 'Planejada',
+    scheduled: 'Agendada',
+    published: 'Publicada',
+    not_published: 'Não publicada',
+    failed: 'Falhou',
+    cancelled: 'Cancelada',
   },
   contentTypes: {
     video: 'Vídeo',
@@ -476,6 +517,7 @@ export const strings = {
     unknown_user: 'Usuário não encontrado.',
     cannot_change_own_role: 'Você não pode alterar o seu próprio perfil.',
     cannot_deactivate_self: 'Você não pode desativar a sua própria conta.',
+    not_planned_with_details: 'Uma rede marcada como "não planejada" não pode ter data nem link.',
     internal_error: 'Erro interno. Tente novamente.',
     network_error: 'Não foi possível falar com o servidor. Verifique sua conexão.',
   } as Record<string, string>,
@@ -511,6 +553,14 @@ export function contentTypeLabel(type: string): string {
 
 export function productionStatusLabel(status: string): string {
   return (strings.productionStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function networkLabel(network: string): string {
+  return (strings.networks as Record<string, string>)[network] ?? network;
+}
+
+export function publicationStatusLabel(status: string): string {
+  return (strings.publicationStatuses as Record<string, string>)[status] ?? status;
 }
 
 export function topicEmptyLabel(view: string): string {

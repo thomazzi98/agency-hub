@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnvelope, apiRequest, queryString, type PageMeta } from '../../lib/api';
+import type { Publication } from '../publications/api';
 
 export type ContentType =
   'video' | 'image' | 'carousel' | 'story' | 'reels' | 'youtube_short' | 'text' | 'custom';
@@ -34,6 +35,8 @@ export interface Content {
   isToday: boolean;
   isOverdue: boolean;
   isBlockedOnClient: boolean;
+  /** One record per network that has been registered — see modules/publications. */
+  publications: Publication[];
 }
 
 export interface ContentSummary {
@@ -45,6 +48,8 @@ export interface ContentSummary {
   completed: number;
   cancelled: number;
   overdue: number;
+  pendingPublication: number;
+  failedPublication: number;
   total: number;
 }
 

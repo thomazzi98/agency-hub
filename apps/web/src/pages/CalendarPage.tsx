@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { CompanySelect } from '../components/CompanySelect';
 import { ContentDialog } from '../components/ContentDialog';
+import { NetworkChips } from '../components/NetworkChips';
+import { PublicationDialog } from '../components/PublicationDialog';
 import {
   Alert,
   Badge,
@@ -36,6 +38,7 @@ import {
   type Content,
   type ProductionStatus,
 } from '../modules/calendar/api';
+import type { Publication, PublicationNetwork } from '../modules/publications/api';
 
 type CalendarView = 'month' | 'week' | 'day' | 'list';
 
@@ -73,12 +76,14 @@ function ContentRow({
   onEdit,
   onDuplicate,
   onDelete,
+  onPublication,
 }: {
   item: Content;
   canManage: boolean;
   onEdit: (item: Content) => void;
   onDuplicate: (item: Content) => void;
   onDelete: (item: Content) => void;
+  onPublication: (item: Content, network: PublicationNetwork, existing?: Publication) => void;
 }) {
   return (
     <Card className="flex flex-col gap-2">
@@ -95,6 +100,13 @@ function ContentRow({
           <Badge tone={flagTone(item)}>{productionStatusLabel(item.productionStatus)}</Badge>
         </div>
       </div>
+
+      <NetworkChips
+        publications={item.publications}
+        onSelect={
+          canManage ? (network, existing) => onPublication(item, network, existing) : undefined
+        }
+      />
 
       {canManage && (
         <div className="flex flex-wrap gap-2">
@@ -124,6 +136,11 @@ export default function CalendarPage() {
   const [editing, setEditing] = useState<Content | null>(null);
   const [creatingFor, setCreatingFor] = useState<Date | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<{
+    content: Content;
+    network: PublicationNetwork;
+    existing?: Publication;
+  } | null>(null);
 
   const [listPage, setListPage] = useState(1);
   const [listStatus, setListStatus] = useState<ProductionStatus | 'all'>('all');
@@ -188,6 +205,14 @@ export default function CalendarPage() {
     );
   };
 
+  const handlePublication = (
+    item: Content,
+    network: PublicationNetwork,
+    existing?: Publication,
+  ) => {
+    setPublishing({ content: item, network, existing });
+  };
+
   const handleDelete = (item: Content) => {
     if (!window.confirm(strings.calendar.confirmRemove)) return;
     remove.mutate(item.id, { onSuccess: () => setNotice(strings.calendar.removed) });
@@ -220,6 +245,18 @@ export default function CalendarPage() {
             setEditing(null);
             setCreatingFor(null);
           }}
+        />
+      )}
+
+      {publishing && (
+        <PublicationDialog
+          companyId={publishing.content.companyId}
+          contentId={publishing.content.id}
+          network={publishing.network}
+          existing={publishing.existing}
+          onClose={() => setPublishing(null)}
+          onSaved={() => setNotice(strings.publications.saved)}
+          onRemoved={() => setNotice(strings.publications.removed)}
         />
       )}
 
@@ -257,6 +294,7 @@ export default function CalendarPage() {
                 [strings.calendar.summary.inReview, summary.data.inReview],
                 [strings.calendar.summary.completed, summary.data.completed],
                 [strings.calendar.summary.overdue, summary.data.overdue],
+                [strings.calendar.summary.pendingPublication, summary.data.pendingPublication],
               ].map(([label, value]) => (
                 <div key={label as string}>
                   <p className="text-xs text-slate-500">{label}</p>
@@ -391,6 +429,7 @@ export default function CalendarPage() {
                             onEdit={setEditing}
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
+                            onPublication={handlePublication}
                           />
                         </li>
                       ))}
@@ -423,6 +462,7 @@ export default function CalendarPage() {
                             onEdit={setEditing}
                             onDuplicate={handleDuplicate}
                             onDelete={handleDelete}
+                            onPublication={handlePublication}
                           />
                         </li>
                       ))}
@@ -465,6 +505,7 @@ export default function CalendarPage() {
                           onEdit={setEditing}
                           onDuplicate={handleDuplicate}
                           onDelete={handleDelete}
+                          onPublication={handlePublication}
                         />
                       </li>
                     ))}

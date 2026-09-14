@@ -34,6 +34,14 @@ export function requireCompanyAccess(actor: AuthenticatedActor, companyId: strin
   }
 }
 
+/**
+ * Planning the calendar and logging publications is agency work: the client side sees
+ * it, it does not author it (06-permissions-and-authorization.md).
+ */
+export function canManageProduction(actor: AuthenticatedActor): boolean {
+  return actor.role === 'agency_admin' || actor.role === 'agency_manager';
+}
+
 export function canManageCampaigns(actor: AuthenticatedActor, companyId: string): boolean {
   if (isAgencyAdmin(actor)) return true;
   if (actor.role !== 'agency_manager') return false;

@@ -55,6 +55,11 @@ export const AuditAction = {
   ContentDuplicated: 'content.duplicated',
   ContentDeleted: 'content.deleted',
 
+  PublicationRegistered: 'publication.registered',
+  PublicationUpdated: 'publication.updated',
+  PublicationStatusChanged: 'publication.status_changed',
+  PublicationRemoved: 'publication.removed',
+
   CommentCreated: 'comment.created',
   CommentUpdated: 'comment.updated',
   CommentDeleted: 'comment.deleted',

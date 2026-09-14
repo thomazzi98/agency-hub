@@ -8,6 +8,7 @@ import { clientIp } from '../../shared/request-context.js';
 import {
   authorizedCompanyIds,
   canDeleteOthersFiles,
+  canManageProduction,
   requireCompanyAccess,
 } from '../../shared/permissions.js';
 import { isAgencyAdmin, type AuthenticatedActor } from '../../shared/actor.js';
@@ -18,6 +19,8 @@ import {
   sortSchema,
 } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
+import { assertResponsibleHasAccess } from '../../shared/references.js';
+import { PENDING_STATUSES, publicationSelect } from '../publications/publication.js';
 
 const contentType = z.enum([
   'video',
@@ -58,6 +61,12 @@ const OVERDUE_STATUSES: ProductionStatus[] = [
  */
 const MAX_CALENDAR_RANGE_DAYS = 400;
 
+/**
+ * Every content row carries its network records, because the calendar has to show at a
+ * glance which networks are done and which are still owed
+ * (03-functional-requirements.md#multi-network-publication-log). Prisma reads them in
+ * one extra query for the whole page rather than one per row.
+ */
 const contentSelect = {
   id: true,
   companyId: true,
@@ -74,6 +83,7 @@ const contentSelect = {
   createdAt: true,
   updatedAt: true,
   createdById: true,
+  publications: { select: publicationSelect },
 } as const;
 
 type ContentRow = {
@@ -151,7 +161,7 @@ const duplicateSchema = z.object({
 
 /** Planning the calendar is agency work (06-permissions-and-authorization.md). */
 function requireContentManagement(actor: AuthenticatedActor): void {
-  if (actor.role !== 'agency_admin' && actor.role !== 'agency_manager') {
+  if (!canManageProduction(actor)) {
     throw forbidden('forbidden', 'Você não tem permissão para gerenciar o calendário.');
   }
 }
@@ -193,20 +203,7 @@ async function assertReferencesAreInCompany(
   }
 
   if (input.responsibleUserId) {
-    const membership = await tx.companyMembership.findFirst({
-      where: { userId: input.responsibleUserId, companyId, status: 'active' },
-      select: { id: true },
-    });
-    const admin = await tx.user.findFirst({
-      where: { id: input.responsibleUserId, role: 'agency_admin', status: 'active' },
-      select: { id: true },
-    });
-    if (!membership && !admin) {
-      throw unprocessable(
-        'responsible_without_access',
-        'O responsável escolhido não tem acesso a esta empresa.',
-      );
-    }
+    await assertResponsibleHasAccess(tx, companyId, input.responsibleUserId);
   }
 }
 
@@ -360,6 +357,16 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      // The one aggregate on the spec's list that lives in another table: a network
+      // still owed a post (03-functional-requirements.md#production-tracking).
+      const pendingPublication = await tx.publication.count({
+        where: { content: scope, status: { in: PENDING_STATUSES } },
+      });
+
+      const failedPublication = await tx.publication.count({
+        where: { content: scope, status: 'failed' },
+      });
+
       return {
         data: {
           planned: byStatus.planned ?? 0,
@@ -370,6 +377,8 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
           completed: byStatus.completed ?? 0,
           cancelled: byStatus.cancelled ?? 0,
           overdue,
+          pendingPublication,
+          failedPublication,
           total: grouped.reduce((sum, entry) => sum + entry._count._all, 0),
         },
       };
