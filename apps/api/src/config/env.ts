@@ -59,6 +59,13 @@ const envSchema = z
     UPLOAD_DOWNLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(300),
     /** Comma-separated; `image/*` matches a whole type. Empty uses the built-in list. */
     UPLOAD_ALLOWED_MIME_TYPES: z.string().optional(),
+
+    // Background worker. pg-boss migrates its own schema, which the least-privilege
+    // application role cannot do, so the queue connects with the owner credentials.
+    DB_OWNER_USER: z.string().min(1),
+    DB_OWNER_PASSWORD: z.string().optional(),
+    WORKER_DATABASE_POOL_SIZE: z.coerce.number().int().positive().default(5),
+    UPLOAD_CLEANUP_CRON: z.string().min(1).default('0 * * * *'),
   })
   .transform((value) => ({
     ...value,

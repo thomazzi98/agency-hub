@@ -120,6 +120,32 @@ services:
       minio-buckets:
         condition: service_completed_successfully
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    command: ['node', 'apps/api/dist/worker.js']
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?DATABASE_URL_DOCKER must be set (see .env.example)}
+      DB_OWNER_USER: ${DB_OWNER_USER:-agencyhub}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:-agencyhub}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?PASSWORD_PEPPER must be set (see .env.example)}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT_DOCKER:-http://minio:9000}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-agencyhub}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-agencyhub-dev-secret}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-agency-hub-dev}
+      STORAGE_REGION: ${STORAGE_REGION:-auto}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-buckets:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:
     name: agency_hub_postgres_data

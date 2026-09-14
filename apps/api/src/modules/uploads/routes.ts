@@ -19,6 +19,7 @@ import {
   type CommittedPart,
 } from '../../shared/storage.js';
 import { evaluateUploadPolicy, partCountFor } from './policy.js';
+import { fileSelect, serializeFile } from '../files/file.js';
 
 const createSchema = z.object({
   companyId: z.string().uuid(),
@@ -535,36 +536,4 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
       return { data: { id: session.id, status: 'aborted' as const } };
     }),
   );
-}
-
-export const fileSelect = {
-  id: true,
-  companyId: true,
-  projectId: true,
-  folderId: true,
-  originalName: true,
-  mimeType: true,
-  sizeBytes: true,
-  status: true,
-  uploadedById: true,
-  uploadedAt: true,
-  deletedAt: true,
-} as const;
-
-export interface FileRow {
-  id: string;
-  companyId: string;
-  projectId: string | null;
-  folderId: string | null;
-  originalName: string;
-  mimeType: string;
-  sizeBytes: bigint;
-  status: string;
-  uploadedById: string | null;
-  uploadedAt: Date;
-  deletedAt: Date | null;
-}
-
-export function serializeFile(file: FileRow) {
-  return { ...file, sizeBytes: Number(file.sizeBytes) };
 }

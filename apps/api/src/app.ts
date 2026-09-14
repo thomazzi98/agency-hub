@@ -17,6 +17,8 @@ import { brandingRoutes } from './modules/branding/routes.js';
 import { projectRoutes } from './modules/projects/routes.js';
 import { folderRoutes } from './modules/folders/routes.js';
 import { uploadRoutes } from './modules/uploads/routes.js';
+import { fileRoutes } from './modules/files/routes.js';
+import { deletionRequestRoutes } from './modules/deletion-requests/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -90,6 +92,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       await api.register(projectRoutes);
       await api.register(folderRoutes);
       await api.register(uploadRoutes);
+      await api.register(fileRoutes);
+      await api.register(deletionRequestRoutes);
     },
     { prefix: '/api' },
   );
