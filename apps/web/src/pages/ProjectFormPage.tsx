@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CompanySelect } from '../components/CompanySelect';
+import { CommentThread } from '../components/CommentThread';
 import {
   Alert,
   Button,
@@ -210,6 +211,10 @@ export default function ProjectFormPage() {
           </Button>
         </form>
       </Card>
+
+      {isEditing && id && (
+        <CommentThread target={{ commentableType: 'project', commentableId: id }} />
+      )}
     </div>
   );
 }

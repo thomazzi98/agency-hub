@@ -28,6 +28,7 @@ export interface CompanyListParams {
   page: number;
   status: 'active' | 'archived' | 'all';
   search?: string;
+  pageSize?: number;
 }
 
 const companiesKey = ['companies'] as const;
@@ -44,6 +45,7 @@ export function useCompanies(params: CompanyListParams) {
     queryFn: async () => {
       const query = queryString({
         page: params.page,
+        pageSize: params.pageSize,
         status: params.status,
         search: params.search,
       });
@@ -51,6 +53,16 @@ export function useCompanies(params: CompanyListParams) {
       return { rows: envelope.data, meta: envelope.meta ?? emptyMeta };
     },
   });
+}
+
+/**
+ * Every company the actor can reach, for the selectors that must offer all of them.
+ * A paginated list would silently hide anything past the first page — an agency with
+ * more clients than one page would simply not be able to pick some of them. 100 is the
+ * server-enforced maximum; past that a searchable picker is the right answer.
+ */
+export function useAllCompanies() {
+  return useCompanies({ page: 1, status: 'all', pageSize: 100 });
 }
 
 export function useCompany(id: string | undefined) {
@@ -85,5 +97,26 @@ export function useSetCompanyStatus(id: string) {
     mutationFn: (next: 'archive' | 'restore') =>
       apiRequest<Company>(`/companies/${id}/${next}`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: companiesKey }),
+  });
+}
+
+export interface CompanyMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'agency_admin' | 'agency_manager' | 'client_manager' | 'contributor';
+  canManageCampaigns: boolean;
+  canDeleteCompanyFiles: boolean;
+}
+
+/**
+ * Who can be assigned work in a company. Not the admin-only user directory: this is
+ * company-scoped and any member of the company may read it.
+ */
+export function useCompanyMembers(companyId: string | undefined) {
+  return useQuery({
+    queryKey: [...companiesKey, 'members', companyId],
+    queryFn: () => apiRequest<CompanyMember[]>(`/companies/${companyId}/members`),
+    enabled: Boolean(companyId),
   });
 }

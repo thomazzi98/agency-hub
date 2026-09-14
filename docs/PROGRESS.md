@@ -515,15 +515,71 @@ that cannot be performed from this environment - see [What is not done](#stage-6
 
 ---
 
+## Stage 7 - Notes, comments, and follow-up topics (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage7_comments_and_topics` (+ `down.sql`): `comments`, `topics`,
+  `topic_replies`, their RLS policies (`topic_replies` follows its topic, having no
+  `company_id` of its own), and a partial index for the live-comments thread.
+- **[comments](../apps/api/src/modules/comments/routes.ts):** create, list, edit,
+  soft-delete. The company always comes from the row being commented on, resolved
+  inside the actor's scope - never from the request.
+- **[topics](../apps/api/src/modules/topics/routes.ts):** create, list with every view
+  the spec requires, detail with the reply thread, status changes, replies.
+- **[companies/:id/members](../apps/api/src/modules/companies/routes.ts):** who can be
+  assigned work in a company. Added because naming a responsible party needs a list of
+  candidates, and the user directory is admin-only - this is company-scoped data any
+  member legitimately reads.
+- **Frontend:** a shared `CommentThread` on files and projects, the topics screen with
+  the view strip, and the topic detail with its thread.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| Topic status follows who last spoke: the responsible party answering moves it to `in_review`, anyone else moves it to `awaiting_response` | The spec lists the statuses but not the transitions. This keeps "awaiting my response" and "awaiting someone else" meaningful without anyone having to set a status by hand. |
+| Only the creator (or an `agency_admin`) changes a topic's lifecycle | It is their question; the responsible party answers it rather than deciding it is finished. |
+| Replying is limited to the responsible party, the creator, and agency staff | A topic is a directed conversation, not a company-wide thread - that is what distinguishes it from a comment. |
+| Moderating someone else's comment uses `can_delete_company_files` | The matrix marks the manager case 🔶, and that is the only override the data model carries that speaks to authority over other people's content ([23-open-questions.md](sdd/23-open-questions.md) #9). |
+| The view and an explicit status filter combine with `AND` | `?view=open&status=resolved` returns nothing rather than silently dropping whichever the object literal happened to overwrite. |
+| Comments on `content` and `pending_request` return `unsupported_target` | Those tables arrive in Stages 8 and 10. The enum value and the whole surrounding flow already exist, so those stages only add target resolution. |
+
+### A real limitation the E2E suite exposed
+
+**Every company selector only loaded the first page of companies.** An agency with more
+than 20 clients simply could not pick some of them - the dropdown showed 20 and gave no
+indication there were more. Selectors now use `useAllCompanies()` (100, the
+server-enforced maximum). **Past 100 companies a searchable picker is needed**; that is
+beyond the Phase 1 sizing assumption ("dozens of client companies",
+[17-performance-requirements.md](sdd/17-performance-requirements.md)) but is a real
+ceiling worth knowing about.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass |
+| Unit + integration | `npm test` | 217 passed / 15 files |
+| Comments and topics | `apps/api/test/integration/comments-topics.test.ts` | 25 passed - cross-tenant refusal on both, attachment scoping, moderation rights per role, the full status dance, and each required view |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 58 passed - includes a topic raised by the agency, answered by a collaborator, and resolved by its creator |
+
+---
+
 ## Next step
 
-**Stage 7 - Notes, comments, and follow-up topics**
-([roadmap](sdd/21-mvp-roadmap.md#stage-7--notes-comments-and-follow-up-topics)).
+**Stage 8 - Editorial calendar, content, and production tracking**
+([roadmap](sdd/21-mvp-roadmap.md#stage-8--editorial-calendar-content-and-production-tracking)).
 
-Concrete first action: add the `comments`, `topics` and `topic_replies` tables with
-their RLS policies in one migration (with `down.sql`), then build `modules/comments`
-and `modules/topics` with `tenantScoped()`. Note that `comments.commentable_type`
-covers `company | project | file | content | pending_request`, but `content` and
-`pending_request` do not exist until Stages 8 and 10 - resolve the ones that do and
-return `unsupported_target` for the rest, the way the deletion-request module already
-handles `content`.
+Concrete first action: add the `content` table with its RLS policy in one migration
+(with `down.sql`), including the `content(company_id, scheduled_at)` index the calendar
+range queries need **from the start** ([14-database-design.md](sdd/14-database-design.md#indexing-strategy)) -
+adding it after a slow screen is noticed is explicitly what the spec says not to do.
+
+Then, while building `modules/calendar`, close the two placeholders Stage 7 and Stage 6
+left for it:
+- `resolveCommentable` in `modules/comments/routes.ts` should resolve `content`.
+- `resolveTarget` in `modules/deletion-requests/routes.ts` should resolve `content`,
+  and approving one should soft-delete the content row.

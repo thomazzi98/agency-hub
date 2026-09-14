@@ -101,6 +101,42 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
     }),
   );
 
+  /**
+   * Who can be assigned work in this company. Deliberately not the admin-only user
+   * directory: this is company-scoped data any member legitimately needs — to name a
+   * responsible party on a topic, for instance — and it exposes nothing about users
+   * outside the company.
+   */
+  app.get(
+    '/companies/:id/members',
+    tenantScoped(async ({ tx, actor, request }) => {
+      const params = parseInput(idParamsSchema, request.params);
+      const company = await findCompanyInScope(tx, params.id, authorizedCompanyIds(actor));
+
+      if (!company) {
+        throw notFound('not_found', 'Empresa não encontrada.');
+      }
+
+      const memberships = await tx.companyMembership.findMany({
+        where: { companyId: params.id, status: 'active', user: { status: 'active' } },
+        select: {
+          canManageCampaigns: true,
+          canDeleteCompanyFiles: true,
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: { user: { name: 'asc' } },
+      });
+
+      return {
+        data: memberships.map((membership) => ({
+          ...membership.user,
+          canManageCampaigns: membership.canManageCampaigns,
+          canDeleteCompanyFiles: membership.canDeleteCompanyFiles,
+        })),
+      };
+    }),
+  );
+
   app.post(
     '/companies',
     tenantScoped(async ({ tx, actor, request, reply }) => {

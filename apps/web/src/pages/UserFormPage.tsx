@@ -12,7 +12,7 @@ import {
   TextField,
 } from '../components/ui';
 import { roleLabel, strings } from '../lib/strings';
-import { useCompanies } from '../modules/companies/api';
+import { useAllCompanies } from '../modules/companies/api';
 import {
   useCreateUser,
   useGrantMembership,
@@ -95,7 +95,7 @@ export default function UserFormPage() {
   const navigate = useNavigate();
 
   const existing = useUser(isEditing ? id : undefined);
-  const companies = useCompanies({ page: 1, status: 'all' });
+  const companies = useAllCompanies();
 
   const create = useCreateUser();
   const update = useUpdateUser(id ?? '');

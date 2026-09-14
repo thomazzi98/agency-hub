@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Alert, SelectField } from './ui';
 import { strings } from '../lib/strings';
-import { useCompanies } from '../modules/companies/api';
+import { useAllCompanies } from '../modules/companies/api';
 
 /**
  * Screens scoped to one company share this control. It only ever lists companies the
@@ -17,7 +17,7 @@ export function CompanySelect({
   onChange: (companyId: string) => void;
   label?: string;
 }) {
-  const companies = useCompanies({ page: 1, status: 'all' });
+  const companies = useAllCompanies();
   // Memoized so the effect below does not see a new array identity every render.
   const rows = useMemo(() => companies.data?.rows ?? [], [companies.data]);
 

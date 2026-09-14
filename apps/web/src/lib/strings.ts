@@ -243,6 +243,8 @@ export const strings = {
     reason: 'Motivo',
     sendRequest: 'Enviar solicitação',
     requestSent: 'Solicitação enviada para análise.',
+    showNotes: 'Notas',
+    hideNotes: 'Ocultar notas',
   },
   fileStatuses: {
     received: 'Recebido',
@@ -270,6 +272,67 @@ export const strings = {
     statusRejected: 'Rejeitada',
     targetFile: 'Arquivo',
     targetContent: 'Conteúdo',
+  },
+  comments: {
+    title: 'Notas e comentários',
+    empty: 'Nenhuma nota ainda. Seja a primeira pessoa a comentar.',
+    newComment: 'Nova nota',
+    body: 'Texto',
+    send: 'Comentar',
+    edited: 'editado',
+    remove: 'Excluir',
+    confirmRemove: 'Excluir esta nota?',
+  },
+  topics: {
+    title: 'Acompanhamentos',
+    new: 'Novo acompanhamento',
+    newTitle: 'Novo acompanhamento',
+    create: 'Criar acompanhamento',
+    titleField: 'Assunto',
+    initialMessage: 'Mensagem inicial',
+    responsible: 'Responsável',
+    priority: 'Prioridade',
+    dueDate: 'Prazo',
+    viewsLabel: 'Filtros de acompanhamento',
+    thread: 'Conversa',
+    noReplies: 'Nenhuma resposta ainda.',
+    yourReply: 'Sua resposta',
+    send: 'Responder',
+    resolve: 'Marcar como resolvido',
+    confirmResolve: 'Marcar este acompanhamento como resolvido? A conversa será encerrada.',
+    closed: 'Este acompanhamento foi encerrado.',
+    youAreResponsible: 'Aguardando você',
+    you: 'você',
+    emptyHint: 'Crie um acompanhamento quando precisar de uma resposta de alguém específico.',
+    replyCount: (count: number) => (count === 1 ? '1 resposta' : `${count} respostas`),
+    views: {
+      all: 'Todos',
+      created_by_me: 'Criados por mim',
+      awaiting_me: 'Aguardando você',
+      awaiting_others: 'Aguardando outros',
+      open: 'Em aberto',
+      resolved: 'Resolvidos',
+    },
+    empty: {
+      all: 'Nenhum acompanhamento por aqui.',
+      created_by_me: 'Você ainda não criou nenhum acompanhamento.',
+      awaiting_me: 'Nada aguardando você. Tudo em dia.',
+      awaiting_others: 'Nada aguardando resposta de outras pessoas.',
+      open: 'Nenhum acompanhamento em aberto.',
+      resolved: 'Nenhum acompanhamento resolvido ainda.',
+    } as Record<string, string>,
+  },
+  topicStatuses: {
+    open: 'Em aberto',
+    awaiting_response: 'Aguardando resposta',
+    in_review: 'Em análise',
+    resolved: 'Resolvido',
+    cancelled: 'Cancelado',
+  },
+  priorities: {
+    low: 'Prioridade baixa',
+    medium: 'Prioridade média',
+    high: 'Prioridade alta',
   },
   branding: {
     title: 'Identidade visual',
@@ -312,6 +375,10 @@ export const strings = {
     account_inactive: 'Esta conta não está ativa. Fale com o administrador.',
     forbidden: 'Você não tem permissão para esta ação.',
     not_found: 'Registro não encontrado.',
+    topic_closed: 'Este acompanhamento já foi encerrado.',
+    responsible_without_access: 'O responsável escolhido não tem acesso a esta empresa.',
+    incomplete_relation: 'Informe o tipo e o item relacionado.',
+    unknown_file: 'Arquivo anexado não encontrado nesta empresa.',
     file_too_large: 'O arquivo excede o tamanho máximo permitido.',
     file_type_not_allowed: 'Este tipo de arquivo não é aceito.',
     too_many_active_uploads:
@@ -362,4 +429,16 @@ export function projectStatusLabel(status: string): string {
 
 export function fileStatusLabel(status: string): string {
   return (strings.fileStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function topicStatusLabel(status: string): string {
+  return (strings.topicStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function topicPriorityLabel(priority: string): string {
+  return (strings.priorities as Record<string, string>)[priority] ?? priority;
+}
+
+export function topicEmptyLabel(view: string): string {
+  return strings.topics.empty[view] ?? 'Nenhum acompanhamento por aqui.';
 }

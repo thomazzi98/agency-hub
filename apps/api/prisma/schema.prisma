@@ -82,6 +82,10 @@ model User {
   uploadSessions          UploadSession[]      @relation("UploadInitiatedBy")
   deletionRequests        DeletionRequest[]    @relation("DeletionRequestedBy")
   reviewedDeletions       DeletionRequest[]    @relation("DeletionReviewedBy")
+  comments                Comment[]            @relation("CommentAuthor")
+  createdTopics           Topic[]              @relation("TopicCreator")
+  responsibleTopics       Topic[]              @relation("TopicResponsible")
+  topicReplies            TopicReply[]         @relation("TopicReplyAuthor")
 
   @@index([status])
   @@map("users")
@@ -110,6 +114,8 @@ model Company {
   files            File[]
   uploadSessions   UploadSession[]
   deletionRequests DeletionRequest[]
+  comments         Comment[]
+  topics           Topic[]
 
   @@index([status])
   @@index([createdById])
@@ -197,6 +203,44 @@ enum DeletionRequestStatus {
   rejected
 
   @@map("deletion_request_status")
+}
+
+enum Priority {
+  low
+  medium
+  high
+
+  @@map("priority")
+}
+
+enum CommentableType {
+  company
+  project
+  file
+  content
+  pending_request
+
+  @@map("commentable_type")
+}
+
+enum TopicRelatedType {
+  project
+  content
+  campaign
+  pending_request
+  file
+
+  @@map("topic_related_type")
+}
+
+enum TopicStatus {
+  open
+  awaiting_response
+  in_review
+  resolved
+  cancelled
+
+  @@map("topic_status")
 }
 
 enum PasswordResetAction {
@@ -384,10 +428,12 @@ model File {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  project    Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  folder     Folder?  @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  uploadedBy User?    @relation("FileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project            Project?  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  folder             Folder?   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  uploadedBy         User?     @relation("FileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  /// Comments that attached this file as their attachment.
+  commentAttachments Comment[] @relation("CommentAttachment")
 
   @@index([companyId, folderId, status])
   @@index([companyId, uploadedAt(sort: Desc)])
@@ -472,4 +518,73 @@ model DeletionRequest {
   @@index([targetType, targetId])
   @@index([requestedById])
   @@map("deletion_requests")
+}
+
+/// A note attached to whatever it is about, addressed polymorphically. The company is
+/// resolved from the target row, never taken from the request.
+model Comment {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String          @map("company_id") @db.Uuid
+  commentableType  CommentableType @map("commentable_type")
+  commentableId    String          @map("commentable_id") @db.Uuid
+  authorId         String?         @map("author_id") @db.Uuid
+  body             String          @db.Text
+  attachmentFileId String?         @map("attachment_file_id") @db.Uuid
+  deletedAt        DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  author     User?   @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  attachment File?   @relation("CommentAttachment", fields: [attachmentFileId], references: [id], onDelete: Restrict)
+
+  @@index([commentableType, commentableId, createdAt])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([authorId])
+  @@index([attachmentFileId])
+  @@map("comments")
+}
+
+/// A directed, threaded conversation with one responsible respondent and a lifecycle —
+/// unlike a comment, which is informational, and unlike a pending request, which
+/// implies a task (03-functional-requirements.md#follow-up-topics).
+model Topic {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId         String            @map("company_id") @db.Uuid
+  title             String            @db.VarChar(200)
+  initialMessage    String            @map("initial_message") @db.Text
+  creatorId         String?           @map("creator_id") @db.Uuid
+  responsibleUserId String            @map("responsible_user_id") @db.Uuid
+  relatedType       TopicRelatedType? @map("related_type")
+  relatedId         String?           @map("related_id") @db.Uuid
+  priority          Priority          @default(medium)
+  dueDate           DateTime?         @map("due_date") @db.Date
+  status            TopicStatus       @default(awaiting_response)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  creator         User?        @relation("TopicCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  responsibleUser User         @relation("TopicResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  replies         TopicReply[]
+
+  @@index([companyId, status, createdAt(sort: Desc)])
+  @@index([responsibleUserId, status])
+  @@index([creatorId, status])
+  @@map("topics")
+}
+
+model TopicReply {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topicId   String   @map("topic_id") @db.Uuid
+  authorId  String?  @map("author_id") @db.Uuid
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  topic  Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author User? @relation("TopicReplyAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([topicId, createdAt])
+  @@index([authorId])
+  @@map("topic_replies")
 }

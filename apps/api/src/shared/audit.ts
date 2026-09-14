@@ -48,6 +48,15 @@ export const AuditAction = {
   FileDeleted: 'file.deleted',
   FileDownloaded: 'file.downloaded',
 
+  CommentCreated: 'comment.created',
+  CommentUpdated: 'comment.updated',
+  CommentDeleted: 'comment.deleted',
+
+  TopicCreated: 'topic.created',
+  TopicUpdated: 'topic.updated',
+  TopicStatusChanged: 'topic.status_changed',
+  TopicReplied: 'topic.replied',
+
   DeletionRequested: 'deletion_request.created',
   DeletionApproved: 'deletion_request.approved',
   DeletionRejected: 'deletion_request.rejected',

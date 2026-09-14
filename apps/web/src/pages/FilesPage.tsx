@@ -2,6 +2,7 @@ import { useCallback, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CompanySelect } from '../components/CompanySelect';
 import { FileUploader } from '../components/FileUploader';
+import { CommentThread } from '../components/CommentThread';
 import {
   Alert,
   Badge,
@@ -16,7 +17,7 @@ import {
 } from '../components/ui';
 import { fileStatusLabel, strings } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
-import { useCompanies } from '../modules/companies/api';
+import { useAllCompanies } from '../modules/companies/api';
 import {
   useCreateFolder,
   useDeleteFolder,
@@ -55,13 +56,14 @@ export default function FilesPage() {
   const isAgency = currentUser?.role === 'agency_admin' || currentUser?.role === 'agency_manager';
   const canManageFolders = currentUser !== null && currentUser?.role !== 'client_manager';
 
-  const companies = useCompanies({ page: 1, status: 'all' }).data?.rows ?? [];
+  const companies = useAllCompanies().data?.rows ?? [];
   const [companyId, setCompanyId] = useState('');
   const [trail, setTrail] = useState<Crumb[]>([{ id: 'root', name: strings.folders.root }]);
   const [newFolderName, setNewFolderName] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [notesFor, setNotesFor] = useState<StoredFile | null>(null);
   const [deletionTarget, setDeletionTarget] = useState<StoredFile | null>(null);
   const [deletionReason, setDeletionReason] = useState('');
 
@@ -332,6 +334,17 @@ export default function FilesPage() {
                             {strings.files.download}
                           </Button>
 
+                          <Button
+                            variant="secondary"
+                            onClick={() =>
+                              setNotesFor((current) => (current?.id === file.id ? null : file))
+                            }
+                          >
+                            {notesFor?.id === file.id
+                              ? strings.files.hideNotes
+                              : strings.files.showNotes}
+                          </Button>
+
                           {isAgency && (
                             <SelectField
                               label={strings.files.changeStatus}
@@ -372,6 +385,12 @@ export default function FilesPage() {
                             </Button>
                           )}
                         </div>
+
+                        {notesFor?.id === file.id && (
+                          <CommentThread
+                            target={{ commentableType: 'file', commentableId: file.id }}
+                          />
+                        )}
                       </Card>
                     </li>
                   );

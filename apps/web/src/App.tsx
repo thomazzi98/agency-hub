@@ -14,6 +14,8 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectFormPage from './pages/ProjectFormPage';
 import FilesPage from './pages/FilesPage';
 import DeletionRequestsPage from './pages/DeletionRequestsPage';
+import TopicsPage from './pages/TopicsPage';
+import TopicDetailPage from './pages/TopicDetailPage';
 import BrandingPage from './pages/BrandingPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { BrandingProvider } from './modules/branding/BrandingProvider';
@@ -124,6 +126,28 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <FilesPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/topicos"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <TopicsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/topicos/:id"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <TopicDetailPage />
                   </AppShell>
                 </ProtectedRoute>
               }

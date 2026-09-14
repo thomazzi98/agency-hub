@@ -9,6 +9,7 @@ const navigation = [
   { to: '/empresas', label: strings.companies.title, end: false, adminOnly: false },
   { to: '/projetos', label: strings.projects.title, end: false, adminOnly: false },
   { to: '/arquivos', label: strings.files.title, end: false, adminOnly: false },
+  { to: '/topicos', label: strings.topics.title, end: false, adminOnly: false },
   { to: '/exclusoes', label: strings.deletionRequests.title, end: false, adminOnly: true },
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },
   { to: '/sessoes', label: strings.sessions.title, end: false, adminOnly: false },
