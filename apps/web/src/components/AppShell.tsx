@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { strings } from '../lib/strings';
 import { useCurrentUser, useLogout } from '../modules/auth/session';
 import { useBrand } from '../modules/branding/context';
+import { NotificationBell } from './NotificationBell';
 
 const navigation = [
   { to: '/', label: strings.home.title, end: true, adminOnly: false },
@@ -65,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {currentUser && (
               <span className="hidden text-sm text-slate-500 sm:inline">{currentUser.email}</span>
             )}
+            <NotificationBell />
             <button
               type="button"
               onClick={() => {

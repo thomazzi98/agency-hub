@@ -32,6 +32,12 @@ export default function PendingRequestDetailPage() {
   const update = useUpdatePendingRequest();
 
   const [body, setBody] = useState('');
+  /**
+   * Held locally so the select moves the moment it is changed. Driving it straight
+   * from the query makes it snap back to the old status until the refetch lands,
+   * which reads as the change having been ignored.
+   */
+  const [pendingStatus, setPendingStatus] = useState<PendingRequestStatus | null>(null);
   const [attachment, setAttachment] = useState<UploadedFile | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -101,13 +107,21 @@ export default function PendingRequestDetailPage() {
         {canManage && (
           <SelectField
             label={strings.pendingRequests.status}
-            value={item.status}
-            onChange={(event) =>
+            value={pendingStatus ?? item.status}
+            onChange={(event) => {
+              const status = event.target.value as PendingRequestStatus;
+              setPendingStatus(status);
               update.mutate(
-                { id: item.id, status: event.target.value as PendingRequestStatus },
-                { onSuccess: () => setNotice(strings.pendingRequests.saved) },
-              )
-            }
+                { id: item.id, status },
+                {
+                  onSuccess: () => setNotice(strings.pendingRequests.saved),
+                  // Back to whatever the server still says, so a failure is visible
+                  // rather than leaving the screen claiming something that did not
+                  // happen.
+                  onError: () => setPendingStatus(null),
+                },
+              );
+            }}
             options={PENDING_REQUEST_STATUSES.map((value) => ({
               value,
               label: pendingRequestStatusLabel(value),

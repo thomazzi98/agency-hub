@@ -30,6 +30,7 @@ async function createCompany(page: Page, name: string) {
 
 async function openFilesFor(page: Page, companyName: string) {
   await page.getByRole('link', { name: 'Arquivos' }).click();
+  await expect(page.getByRole('heading', { name: 'Arquivos' })).toBeVisible();
   await page.getByLabel('Empresa').selectOption({ label: companyName });
   await expect(page.getByRole('heading', { name: 'Enviar arquivos' })).toBeVisible();
 }

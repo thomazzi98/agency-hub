@@ -46,6 +46,11 @@ export async function withTenantScope<T>(
   fn: (tx: ScopedDb) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
+    // Set for every actor, admin included: notifications and push devices belong to a
+    // person rather than to a company, so their policies scope by this rather than by
+    // the company list (08-notifications-and-push.md#tenant-isolation).
+    await tx.$executeRaw`SELECT set_config('app.current_user_id', ${actor.userId}, true)`;
+
     if (isAgencyAdmin(actor)) {
       await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'true', true)`;
     } else {

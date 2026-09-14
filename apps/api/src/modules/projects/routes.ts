@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { forbidden, notFound, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyProjectChanged } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireCompanyAccess } from '../../shared/permissions.js';
 import {
@@ -206,6 +207,13 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         entityId: project.id,
         ipAddress: clientIp(request),
         metadata: { changed: Object.keys(body) },
+      });
+
+      await notifyProjectChanged(tx, {
+        companyId: project.companyId,
+        actorId: actor.userId,
+        projectId: project.id,
+        name: project.name,
       });
 
       return { data: project };

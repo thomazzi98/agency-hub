@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { forbidden, notFound, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyCommentCreated } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, canDeleteOthersFiles } from '../../shared/permissions.js';
 import { isAgencyAdmin, type AuthenticatedActor } from '../../shared/actor.js';
@@ -21,6 +22,13 @@ const createSchema = z.object({
   commentableId: z.string().uuid(),
   body: z.string().trim().min(1).max(5000),
   attachmentFileId: z.string().uuid().nullish(),
+  /**
+   * Who to call out specifically. Sent as ids rather than parsed out of the text,
+   * because guessing which "@ana" a sentence means is exactly the kind of ambiguity
+   * that ends with the wrong person being told. Every id is checked against the
+   * company before it is used (modules/notifications/service.ts).
+   */
+  mentionedUserIds: z.array(z.string().uuid()).max(20).optional(),
 });
 
 const updateSchema = z.object({ body: z.string().trim().min(1).max(5000) });
@@ -178,6 +186,15 @@ export async function commentRoutes(app: FastifyInstance): Promise<void> {
         entityId: comment.id,
         ipAddress: clientIp(request),
         metadata: { commentableType: body.commentableType, commentableId: body.commentableId },
+      });
+
+      await notifyCommentCreated(tx, {
+        companyId: target.companyId,
+        actorId: actor.userId,
+        commentableType: body.commentableType,
+        commentableId: body.commentableId,
+        body: body.body,
+        mentionedUserIds: body.mentionedUserIds,
       });
 
       reply.code(201);

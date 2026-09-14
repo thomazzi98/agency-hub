@@ -20,6 +20,7 @@ import {
 } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import { assertResponsibleHasAccess } from '../../shared/references.js';
+import { notifyContentStatusChanged } from '../notifications/events.js';
 import { PENDING_STATUSES, publicationSelect } from '../publications/publication.js';
 
 const contentType = z.enum([
@@ -470,6 +471,17 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         ipAddress: clientIp(request),
         metadata: { changed: Object.keys(body) },
       });
+
+      if (body.productionStatus) {
+        await notifyContentStatusChanged(tx, {
+          companyId: content.companyId,
+          actorId: actor.userId,
+          contentId: content.id,
+          title: content.title,
+          status: body.productionStatus,
+          responsibleUserId: content.responsibleUserId,
+        });
+      }
 
       return { data: withFlags(content, new Date()) };
     }),

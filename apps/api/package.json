@@ -24,7 +24,8 @@
     "db:setup": "npm run db:provision && npm run db:migrate:deploy",
     "dev:worker": "tsx watch src/worker.ts",
     "start:worker": "node dist/worker.js",
-    "storage:configure": "node scripts/configure-storage-bucket.mjs"
+    "storage:configure": "node scripts/configure-storage-bucket.mjs",
+    "push:keys": "node scripts/generate-vapid-keys.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
@@ -37,11 +38,13 @@
     "dotenv": "^16.6.1",
     "fastify": "^5.0.0",
     "pg-boss": "^10.4.2",
+    "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
+    "@types/web-push": "^3.6.4",
     "pg": "^8.23.0",
     "prisma": "^6.19.3",
     "tsx": "^4.16.0",

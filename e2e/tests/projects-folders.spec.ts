@@ -91,6 +91,7 @@ test.describe('folders', () => {
     await createCompany(page, companyName);
 
     await page.getByRole('link', { name: 'Arquivos' }).click();
+    await expect(page.getByRole('heading', { name: 'Arquivos' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByLabel('Nome da pasta').fill('Fotos');

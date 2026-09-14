@@ -17,6 +17,7 @@ import DeletionRequestsPage from './pages/DeletionRequestsPage';
 import CalendarPage from './pages/CalendarPage';
 import PublicationsPage from './pages/PublicationsPage';
 import PendingRequestsPage from './pages/PendingRequestsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import PendingRequestDetailPage from './pages/PendingRequestDetailPage';
 import TopicsPage from './pages/TopicsPage';
 import TopicDetailPage from './pages/TopicDetailPage';
@@ -152,6 +153,17 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <PublicationsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/notificacoes"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <NotificationsPage />
                   </AppShell>
                 </ProtectedRoute>
               }

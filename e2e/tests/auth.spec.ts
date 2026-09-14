@@ -105,6 +105,10 @@ test.describe('forced password change', () => {
     await expect(page.getByRole('heading', { name: 'Sessões ativas' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Sair' }).click();
+    // Logging out is a round trip followed by a redirect; signing in again before it
+    // lands races the redirect, which then wipes the half-typed form.
+    await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
+
     await submitLogin(page, user.email, newPassword);
     await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
   });

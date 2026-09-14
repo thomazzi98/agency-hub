@@ -16,6 +16,14 @@ export default tseslint.config(
     },
   },
   {
+    // The push service worker runs in a worker global scope, not the window — `self`,
+    // `clients` and `registration` are its globals (docs/sdd/08-notifications-and-push.md).
+    files: ['apps/web/public/sw.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker, ...globals.browser },
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,

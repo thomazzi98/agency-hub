@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { conflict, forbidden, notFound, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyTopicCreated, notifyTopicReplied } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireCompanyAccess } from '../../shared/permissions.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
@@ -235,6 +236,14 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
         metadata: { responsibleUserId: body.responsibleUserId },
       });
 
+      await notifyTopicCreated(tx, {
+        companyId: topic.companyId,
+        actorId: actor.userId,
+        topicId: topic.id,
+        title: topic.title,
+        responsibleUserId: body.responsibleUserId,
+      });
+
       reply.code(201);
       return { data: topic };
     }),
@@ -319,6 +328,15 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
         entityId: topic.id,
         ipAddress: clientIp(request),
         metadata: { replyId: created.id, status: nextStatus },
+      });
+
+      await notifyTopicReplied(tx, {
+        companyId: topic.companyId,
+        actorId: actor.userId,
+        topicId: topic.id,
+        title: topic.title,
+        creatorId: topic.creatorId,
+        responsibleUserId: topic.responsibleUserId,
       });
 
       reply.code(201);

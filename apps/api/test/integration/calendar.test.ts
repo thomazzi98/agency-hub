@@ -296,9 +296,12 @@ describe('calendar range queries', () => {
 
 describe('calendar flags', () => {
   it('marks an item scheduled for today', async () => {
-    const noonToday = new Date();
-    noonToday.setUTCHours(12, 0, 0, 0);
-    await seedContent({ companyId: world.companyA.id, scheduledAt: noonToday });
+    // The end of today, not midday: a fixed hour makes this pass or fail depending on
+    // what time of day the suite happens to run, because anything already past is
+    // also overdue. Found when a run after 12:00 UTC failed.
+    const lateToday = new Date();
+    lateToday.setUTCHours(23, 59, 59, 0);
+    await seedContent({ companyId: world.companyA.id, scheduledAt: lateToday });
     const cookie = await sessionFor(world.managerA);
 
     const response = await app.inject(authed({ method: 'GET', url: '/api/content' }, cookie));

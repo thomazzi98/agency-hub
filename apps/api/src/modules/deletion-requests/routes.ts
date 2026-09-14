@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { conflict, notFound } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyDeletionRequested, notifyDeletionReviewed } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireAgencyAdmin } from '../../shared/permissions.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
@@ -150,6 +151,13 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
         metadata: { targetType: body.targetType, targetId: body.targetId, label: target.label },
       });
 
+      await notifyDeletionRequested(tx, {
+        companyId: target.companyId,
+        actorId: actor.userId,
+        requestId: created.id,
+        targetType: body.targetType,
+      });
+
       reply.code(201);
       return { data: created };
     }),
@@ -216,6 +224,14 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
             targetId: existing.targetId,
             reviewNotes: body.reviewNotes ?? null,
           },
+        });
+
+        await notifyDeletionReviewed(tx, {
+          companyId: existing.companyId,
+          actorId: actor.userId,
+          requestId: existing.id,
+          requestedById: existing.requestedById,
+          approved: decision === 'approved',
         });
 
         return { data: reviewed };

@@ -88,7 +88,16 @@ const TENANT_TABLES = [
   'content',
   'publications',
   'pending_requests',
+  'notifications',
 ];
+
+/**
+ * Tables that belong to a person rather than to a company, and are scoped by
+ * `app_current_user_id()` instead (14-database-design.md). `sessions` and
+ * `password_reset_audits` are deliberately not here: authentication has to read a
+ * session row *before* there is a current user to scope by.
+ */
+const USER_SCOPED_TABLES = ['notification_preferences', 'push_devices'];
 
 describe('row-level security coverage', () => {
   it('protects every tenant-owned table with a tenant_isolation policy', async () => {
@@ -105,6 +114,25 @@ describe('row-level security coverage', () => {
     `;
 
     expect(rows.map((row) => row.table).sort()).toEqual([...TENANT_TABLES].sort());
+    expect(
+      rows.filter((row) => !row.enabled || row.policies === 0n).map((row) => row.table),
+    ).toEqual([]);
+  });
+
+  it('protects every per-user table with a user_isolation policy', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; enabled: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table,
+             c.relrowsecurity AS enabled,
+             count(p.polname) FILTER (WHERE p.polname = 'user_isolation') AS policies
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_policy p ON p.polrelid = c.oid
+       WHERE n.nspname = 'public'
+         AND c.relname = ANY (${USER_SCOPED_TABLES})
+       GROUP BY c.relname, c.relrowsecurity
+    `;
+
+    expect(rows.map((row) => row.table).sort()).toEqual([...USER_SCOPED_TABLES].sort());
     expect(
       rows.filter((row) => !row.enabled || row.policies === 0n).map((row) => row.table),
     ).toEqual([]);

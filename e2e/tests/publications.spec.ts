@@ -31,6 +31,7 @@ async function planContent(page: Page, companyName: string, title: string) {
   await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Calendário' }).click();
+  await expect(page.getByRole('heading', { name: 'Calendário' })).toBeVisible();
   await page.getByLabel('Empresa').selectOption({ label: companyName });
 
   await page.getByRole('button', { name: 'Novo conteúdo' }).first().click();
@@ -88,6 +89,9 @@ test.describe('multi-network publications', () => {
     await expect(page.getByText('Publicação registrada.')).toBeVisible();
 
     await page.getByRole('link', { name: 'Publicações' }).click();
+    // Every screen has an "Empresa" selector, so touching it before this page has
+    // rendered would set the *previous* page's one and leave this one on its default.
+    await expect(page.getByRole('heading', { name: 'Publicações' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByLabel('Somente pendentes').check();
 

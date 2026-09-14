@@ -66,12 +66,27 @@ const envSchema = z
     DB_OWNER_PASSWORD: z.string().optional(),
     WORKER_DATABASE_POOL_SIZE: z.coerce.number().int().positive().default(5),
     UPLOAD_CLEANUP_CRON: z.string().min(1).default('0 * * * *'),
+    CONTENT_OVERDUE_CRON: z.string().min(1).default('15 * * * *'),
+
+    // Web Push (ADR-0005). Absent keys disable push entirely and the app falls back to
+    // in-app notifications only, which is the system of record either way — so a
+    // deployment without keys is degraded, never broken.
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    /** A mailto: or https: URL identifying the sender to the push service. */
+    VAPID_SUBJECT: z.string().optional(),
+    /** Thresholds, not constants, so they are tunable post-launch
+        (08-notifications-and-push.md#deduplication--anti-spam-concrete-parameters). */
+    PUSH_RESOURCE_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
+    PUSH_MAX_PER_USER_PER_HOUR: z.coerce.number().int().positive().default(20),
   })
   .transform((value) => ({
     ...value,
     // Insecure cookies must never be possible in production, but a developer on
     // plain http needs them off — so the default follows NODE_ENV, not a literal.
     SESSION_COOKIE_SECURE: value.SESSION_COOKIE_SECURE ?? value.NODE_ENV === 'production',
+    /** Push is only attempted when the deployment actually has a key pair. */
+    pushEnabled: Boolean(value.VAPID_PUBLIC_KEY && value.VAPID_PRIVATE_KEY && value.VAPID_SUBJECT),
     corsOrigins: (value.CORS_ORIGIN ?? '')
       .split(',')
       .map((origin) => origin.trim())

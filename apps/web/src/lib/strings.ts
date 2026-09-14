@@ -390,6 +390,55 @@ export const strings = {
     remove: 'Excluir',
     confirmRemove: 'Excluir esta nota?',
   },
+  notifications: {
+    title: 'Notificações',
+    open: 'Abrir notificações',
+    badge: (count: number) => (count > 99 ? '99+' : String(count)),
+    unreadOnly: 'Somente não lidas',
+    markAllRead: 'Marcar todas como lidas',
+    allRead: 'Tudo marcado como lido.',
+    empty: 'Nenhuma notificação por aqui.',
+    emptyUnread: 'Você está em dia.',
+    openItem: 'Abrir',
+    settings: 'Preferências de notificação',
+    pushTitle: 'Notificações no celular',
+    pushExplain:
+      'Podemos avisar você no navegador quando algo precisar da sua atenção — pendências, menções e prazos. Você escolhe quais avisos recebe e pode desligar quando quiser.',
+    pushEnable: 'Ativar avisos neste dispositivo',
+    pushEnabled: 'Avisos ativados neste dispositivo.',
+    pushDenied:
+      'O navegador bloqueou os avisos. Libere as notificações para este site nas configurações do navegador.',
+    pushUnavailable: 'Este servidor não está configurado para enviar avisos.',
+    pushDevices: 'Dispositivos registrados',
+    pushRemove: 'Remover',
+    pushRemoved: 'Dispositivo removido.',
+    pushNoDevices: 'Nenhum dispositivo registrado.',
+    pushChannel: 'Receber aviso no dispositivo',
+    preferencesHint:
+      'A lista de notificações no app recebe tudo. Aqui você escolhe o que também chega como aviso no dispositivo.',
+    saved: 'Preferência salva.',
+  },
+  notificationTypes: {
+    'file.uploaded': 'Novo arquivo enviado',
+    'file.status_changed': 'Situação de arquivo alterada',
+    'file.response_sent': 'Arquivo recebido em resposta',
+    'comment.created': 'Novo comentário ou nota',
+    'user.mentioned': 'Você foi mencionado',
+    'pending_request.created': 'Nova pendência para você',
+    'pending_request.answered': 'Pendência respondida',
+    'content.status_changed': 'Situação de conteúdo alterada',
+    'content.approval_requested': 'Aprovação solicitada',
+    'content.overdue': 'Conteúdo atrasado',
+    'publication.status_changed': 'Publicação atualizada',
+    'project.changed': 'Projeto alterado',
+    'topic.created': 'Novo acompanhamento',
+    'topic.replied': 'Resposta em acompanhamento',
+    'deletion_request.created': 'Solicitação de exclusão',
+    'deletion_request.approved': 'Exclusão aprovada',
+    'deletion_request.rejected': 'Exclusão recusada',
+    'campaign.status_changed': 'Situação de campanha alterada',
+    'campaign.needs_attention': 'Campanha precisa de atenção',
+  },
   pendingRequests: {
     title: 'Pendências',
     new: 'Nova pendência',
@@ -626,6 +675,10 @@ export function networkLabel(network: string): string {
 
 export function publicationStatusLabel(status: string): string {
   return (strings.publicationStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function notificationTypeLabel(type: string): string {
+  return (strings.notificationTypes as Record<string, string>)[type] ?? type;
 }
 
 export function pendingRequestStatusLabel(status: string): string {

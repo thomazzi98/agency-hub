@@ -11,6 +11,7 @@ import {
   requireCompanyAccess,
 } from '../../shared/permissions.js';
 import { assertResponsibleHasAccess } from '../../shared/references.js';
+import { notifyPublicationStatusChanged } from '../notifications/events.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import type { AuthenticatedActor } from '../../shared/actor.js';
@@ -225,6 +226,17 @@ export async function publicationRoutes(app: FastifyInstance): Promise<void> {
           to: publication.status,
         },
       });
+
+      if (!existing || existing.status !== publication.status) {
+        await notifyPublicationStatusChanged(tx, {
+          companyId: content.companyId,
+          actorId: actor.userId,
+          contentId: content.id,
+          contentTitle: content.title,
+          network: params.network,
+          status: publication.status,
+        });
+      }
 
       reply.code(existing ? 200 : 201);
       return { data: publication };

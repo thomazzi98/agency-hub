@@ -7,6 +7,11 @@ import { AuditAction, writeAuditLog } from '../../shared/audit.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireCompanyAccess } from '../../shared/permissions.js';
 import { assertResponsibleHasAccess } from '../../shared/references.js';
+import {
+  notifyCommentCreated,
+  notifyPendingRequestAnswered,
+  notifyPendingRequestCreated,
+} from '../notifications/events.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import type { AuthenticatedActor } from '../../shared/actor.js';
@@ -329,6 +334,14 @@ export async function pendingRequestRoutes(app: FastifyInstance): Promise<void> 
         metadata: { responsibleUserId: pendingRequest.responsibleUserId },
       });
 
+      await notifyPendingRequestCreated(tx, {
+        companyId: pendingRequest.companyId,
+        actorId: actor.userId,
+        requestId: pendingRequest.id,
+        title: pendingRequest.title,
+        responsibleUserId: pendingRequest.responsibleUserId,
+      });
+
       reply.code(201);
       return { data: withFlags(pendingRequest, actor.userId, startOfToday()) };
     }),
@@ -460,6 +473,25 @@ export async function pendingRequestRoutes(app: FastifyInstance): Promise<void> 
         ipAddress: clientIp(request),
         metadata: { commentId: comment.id, attached: Boolean(body.attachmentFileId) },
       });
+
+      if (answersIt) {
+        await notifyPendingRequestAnswered(tx, {
+          companyId: existing.companyId,
+          actorId: actor.userId,
+          requestId: existing.id,
+          title: existing.title,
+          createdById: existing.createdById,
+          withAttachment: Boolean(body.attachmentFileId),
+        });
+      } else {
+        await notifyCommentCreated(tx, {
+          companyId: existing.companyId,
+          actorId: actor.userId,
+          commentableType: 'pending_request',
+          commentableId: existing.id,
+          body: body.body,
+        });
+      }
 
       reply.code(201);
       return {

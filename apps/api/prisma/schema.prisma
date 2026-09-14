@@ -91,6 +91,10 @@ model User {
   responsiblePublications Publication[]        @relation("PublicationResponsible")
   responsibleRequests     PendingRequest[]     @relation("PendingRequestResponsible")
   createdRequests         PendingRequest[]     @relation("PendingRequestCreatedBy")
+  notifications           Notification[]       @relation("NotificationRecipient")
+  triggeredNotifications  Notification[]       @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
+  pushDevices             PushDevice[]
 
   @@index([status])
   @@map("users")
@@ -123,6 +127,7 @@ model Company {
   topics           Topic[]
   content          Content[]
   pendingRequests  PendingRequest[]
+  notifications    Notification[]
 
   @@index([status])
   @@index([createdById])
@@ -273,6 +278,13 @@ enum ProductionStatus {
   cancelled
 
   @@map("production_status")
+}
+
+enum NotificationChannel {
+  in_app
+  push
+
+  @@map("notification_channel")
 }
 
 enum PendingRequestStatus {
@@ -692,6 +704,79 @@ model Content {
   @@index([relatedFileId])
   @@index([createdById])
   @@map("content")
+}
+
+/// One thing that happened, addressed to one person. The in-app row is created first
+/// and is the system of record; push is a best-effort accelerant on top of it
+/// (08-notifications-and-push.md#failure-fallback).
+model Notification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  /// Null only for platform-level events with no single company. Every event-driven
+  /// notification carries one (14-database-design.md).
+  companyId   String?   @map("company_id") @db.Uuid
+  type        String    @db.VarChar(80)
+  title       String    @db.VarChar(200)
+  message     String    @db.VarChar(500)
+  actorId     String?   @map("actor_id") @db.Uuid
+  relatedType String?   @map("related_type") @db.VarChar(40)
+  relatedId   String?   @map("related_id") @db.Uuid
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+  /// When push actually went out for this row. Null means in-app only so far — it is
+  /// what the per-user hourly ceiling counts, and what stops one row being pushed twice.
+  pushSentAt  DateTime? @map("push_sent_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  recipient User     @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  /// The unread counter and the notification centre are both this query.
+  @@index([recipientId, readAt, createdAt(sort: Desc)])
+  /// Deduplication looks a row up by exactly this tuple.
+  @@index([recipientId, type, relatedType, relatedId])
+  @@index([companyId])
+  @@index([actorId])
+  @@map("notifications")
+}
+
+/// In-app delivery is always on — it is the system of record — so a row here only ever
+/// turns a channel off (08-notifications-and-push.md#preferences).
+model NotificationPreference {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  eventType String              @map("event_type") @db.VarChar(80)
+  channel   NotificationChannel
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, eventType, channel])
+  @@map("notification_preferences")
+}
+
+/// One browser registration. A user can have several; each is disabled or revoked on
+/// its own (08-notifications-and-push.md#device-registration-lifecycle).
+model PushDevice {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// The push service URL the browser handed us. Unique so re-registering the same
+  /// browser updates the row instead of accumulating duplicates.
+  endpoint   String    @unique @db.Text
+  p256dhKey  String    @map("p256dh_key") @db.Text
+  authKey    String    @map("auth_key") @db.Text
+  userAgent  String?   @map("user_agent") @db.VarChar(400)
+  enabled    Boolean   @default(true)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, enabled])
+  @@map("push_devices")
 }
 
 /// A request for something the agency needs from a client or a collaborator: a file,

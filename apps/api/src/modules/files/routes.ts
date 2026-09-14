@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { forbidden, notFound, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyFileStatusChanged } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import {
   authorizedCompanyIds,
@@ -182,6 +183,16 @@ export async function fileRoutes(app: FastifyInstance): Promise<void> {
         ipAddress: clientIp(request),
         metadata: { changed: Object.keys(body), status: body.status ?? null },
       });
+
+      if (body.status) {
+        await notifyFileStatusChanged(tx, {
+          companyId: file.companyId,
+          actorId: actor.userId,
+          fileId: file.id,
+          fileName: file.originalName,
+          status: body.status,
+        });
+      }
 
       return { data: serializeFile(file) };
     }),

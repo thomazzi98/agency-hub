@@ -53,6 +53,7 @@ test.describe('pending requests', () => {
     await expect(page.getByRole('status').first()).toHaveText('Acesso concedido.');
 
     await page.getByRole('link', { name: 'Pendências' }).click();
+    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByRole('button', { name: 'Nova pendência' }).click();
@@ -70,6 +71,7 @@ test.describe('pending requests', () => {
     // The recipient's side: it is waiting on them, and they answer with a file.
     await signIn(page, recipient.email);
     await page.getByRole('link', { name: 'Pendências' }).click();
+    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     // "Esperando por mim" is the view this page opens on.
@@ -99,10 +101,14 @@ test.describe('pending requests', () => {
     // The agency sees the answer and closes it.
     await signIn(page, admin(testInfo).email);
     await page.getByRole('link', { name: 'Pendências' }).click();
+    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByRole('button', { name: 'Todas' }).click();
     await page.getByRole('link', { name: title }).click();
 
+    // The list has a "Situação" filter of its own, so wait for the detail to render
+    // before reaching for the one that actually changes the request.
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await page.getByLabel('Situação').selectOption('completed');
     await expect(page.getByText('Pendência atualizada.')).toBeVisible();
 

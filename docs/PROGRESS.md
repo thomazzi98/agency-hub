@@ -746,20 +746,128 @@ requests are on its event list.
 
 ---
 
+## Stage 11 - Notifications, in-app and push (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage11_notifications` (+ `down.sql`): `notifications`,
+  `notification_preferences`, `push_devices`, the `app_current_user_id()` helper, and
+  the partial unique index deduplication is built on.
+- **The notification service** ([service.ts](../apps/api/src/modules/notifications/service.ts)):
+  recipient resolution, deduplication, and the company check that every event passes
+  through. [events.ts](../apps/api/src/modules/notifications/events.ts) holds one
+  function per event so the wording lives in exactly one place.
+- **Every event in the Phase 1 catalog is wired** to a real mutation point in Stages
+  3-10: uploads, file status, comments, mentions, pending requests created and
+  answered, a file arriving as a response, content status and approval requests,
+  publications, project changes, topics created and replied, and all three
+  deletion-request outcomes. Campaign events are declared and left for Stage 13.
+- **Two worker jobs:** `dispatch-push-notifications` (every minute) and
+  `notify-overdue-content` (hourly) - the one event in the catalog nobody triggers by
+  acting.
+- **Web Push** end to end: VAPID config, `/push/config` feature flag, device
+  registration and revocation, [the service worker](../apps/web/public/sw.js), and
+  `npm run push:keys --workspace=@agency-hub/api` to generate a key pair.
+- **Frontend:** the unread badge in the header, the notification centre with
+  mark-one/mark-all and server-built deep links, and the push settings panel.
+
+### The finding that shaped the schema
+
+The first version gave `notifications` a **per-recipient** read policy, so one user
+could not read another's rows even inside the same company. It does not work, and the
+reason is worth recording: PostgreSQL applies `SELECT` policies to
+`INSERT ... ON CONFLICT` and to any `UPDATE` whose `WHERE` touches the table. Raising
+an event means writing rows addressed to *other people*, and collapsing a burst means
+updating one of theirs - so a policy that hid them also blocked deduplication.
+Proved with a probe: the same statement succeeded when the actor was the recipient and
+failed when they were not.
+
+The policy is therefore company-scoped like every other tenant table, which is exactly
+what [08-notifications-and-push.md](sdd/08-notifications-and-push.md#tenant-isolation)
+requires of the database ("a user never receives a notification about a resource in a
+company they don't have access to"). Restricting a reader to their own rows lives in
+application code, where every query filters on `recipient_id`, and has its own tests -
+including one that tries to mark someone else's notification read and gets a 404.
+
+`notification_preferences` and `push_devices` *are* per-user, are never written across
+users, and keep the `app_current_user_id()` policy.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| Push is a worker sweep, not an inline send | The spec wants a burst debounced "to the end of the window as a single, updated push". A sweep gets that for free: by the time it reaches a row, dedup has already folded the burst into it. The in-app centre is untouched and stays real-time. |
+| Mentions are sent as user ids, not parsed from the text | Guessing which "@ana" a sentence means ends with the wrong person being told. Every id is still checked against the company before it is used. |
+| "New comment" and "new note" are one event type | They are one row in one table - a note is a comment on a company or a project. A preference that silenced one but not the other would describe a distinction the data does not make. |
+| In-app cannot be switched off | It is the system of record; push is the accelerant. The API only accepts `channel: "push"`, and the client says so rather than showing a control that refuses. |
+| The hourly ceiling counts rows pushed in the last hour | A row pushed twice counts once, which slightly undercounts - but the 5-minute per-resource window already caps one resource at 12/hour, so the pair stays bounded. An exact count would need a send log for very little gain. |
+| Feature detection, never a browser check | 08 asks for the control to be hidden on unsupported browsers. Written as a capability test so it keeps being right as support changes, rather than a hardcoded iOS check that ages badly. |
+| `sessions` and `password_reset_audits` keep no user policy | Authentication has to read a session row *before* there is a current user to scope by. Recorded in `rls.test.ts` so the omission is deliberate rather than forgotten. |
+
+### Four real bugs found and fixed
+
+- **A preference toggle snapped back.** The checkbox is controlled by the query, so a
+  click reverted for a frame until the refetch landed - on a slow connection it reads
+  as "my click did nothing". Fixed with an optimistic cache update, deliberately
+  synchronous: an `await` before `setQueryData` lets React re-render with the old value
+  first, which is what made it visible at all.
+- **A preference that failed to save looked identical to one that saved.** The panel
+  rendered only its own local error, never the mutation's. Now it renders both.
+
+- **The company selector silently snapped back to the first company.** Its
+  "choose a default" effect was scheduled from a render where nothing was selected, so
+  a selection made before that effect flushed was overwritten a moment later. The
+  screen then showed one company's name above another company's data. Fixed by marking
+  the choice synchronously in the change handler, where no effect can race it.
+- **The status select on a pendência reverted while its save was in flight**, the same
+  shape of defect as the preference toggle. Now held locally and rolled back only if
+  the save actually fails.
+
+Also fixed, unrelated to this stage: `calendar.test.ts` scheduled "today" at 12:00 UTC,
+so the test passed in the morning and failed in the afternoon - anything already past
+is also overdue. Caught by a run after midday.
+
+Three E2E races were fixed too, all the same mistake: reaching for a control by label
+immediately after clicking a nav link, which can hit the *previous* page's control of
+the same name. Every screen has an "Empresa" selector and two have a "Situação" one,
+so the specs now wait for the destination heading first.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Unit + integration | `npm test` | 311 passed / 19 files |
+| Notifications | `apps/api/test/integration/notifications.test.ts` | 23 passed - event emission, the actor never notified, mentions, a revoked member receiving nothing, dedup collapsing and then restarting after a read, the centre, preferences, push devices, and the overdue sweep being safe to re-run |
+| RLS coverage | `apps/api/test/integration/rls.test.ts` | 13 passed - now also asserting every per-user table has a `user_isolation` policy |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 74 passed |
+
+### What is not done
+
+Push delivery has not been exercised against a real push service. The dispatch job,
+the VAPID signing and the service worker are all in place, but a browser's
+`pushManager.subscribe` needs to reach a live push endpoint, which is not available
+here - the same shape of gap as the Stage 6 real-device upload pass. **Before
+production: generate a key pair, set the three `VAPID_*` variables, and confirm one
+notification arrives on a phone.**
+
+---
+
 ## Next step
 
-**Stage 11 - Notifications (internal + push)**
-([roadmap](sdd/21-mvp-roadmap.md#stage-11--notifications-internal--push)).
+**Stage 12 - Dashboards**
+([roadmap](sdd/21-mvp-roadmap.md#stage-12--dashboards)).
 
-Concrete first action: add `notifications`, `notification_preferences` and
-`push_devices` in one migration (with `down.sql`). Note the split from
-[14-database-design.md](sdd/14-database-design.md): `notifications` is tenant data with
-a **nullable** `company_id` and gets a `tenant_isolation` policy; the other two are
-per-user and global, so they are role-scoped in application code and belong in the
-`rls.test.ts` list's non-tenant side, not in `TENANT_TABLES`.
+Concrete first action: read the two dashboard sections of
+[03-functional-requirements.md](sdd/03-functional-requirements.md#dashboards) and build
+`modules/dashboard` on top of the aggregates that already exist - `GET /content/summary`
+(Stages 8 and 9) and `GET /pending-requests/summary` (Stage 10) - rather than writing
+new counting queries beside them.
 
-Then wire the event list from
-[08-notifications-and-push.md](sdd/08-notifications-and-push.md#events) into the places
-that already raise audit entries - the recipient resolution rules there are what decide
-who each event reaches, and they are per-company, so they must be resolved on the server
-inside the tenant scope.
+The agency dashboard must answer *"o que eu preciso fazer agora?"*, so the work is
+mostly composition and ordering, not new data. Two things it needs that nothing
+provides yet: "recent activity" (read from `audit_logs`, which is admin-only to
+read - check the role before offering it) and the campaign panels, which stay empty
+until Stage 13.

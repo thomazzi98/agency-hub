@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
 import { conflict, notFound, tooManyRequests, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
+import { notifyFileUploaded } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireCompanyAccess } from '../../shared/permissions.js';
 import { multiScoped, type ScopedDb } from '../../shared/tenant-scope.js';
@@ -501,6 +502,13 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
           entityId: created.id,
           ipAddress: clientIp(request),
           metadata: { originalName: session.originalName, sizeBytes },
+        });
+
+        await notifyFileUploaded(tx, {
+          companyId: session.companyId,
+          actorId: actor.userId,
+          fileId: created.id,
+          fileName: session.originalName,
         });
 
         return created;
