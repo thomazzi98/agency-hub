@@ -33,6 +33,12 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/api/scripts ./apps/api/scripts
 
+# The backups volume mounts here (docker-compose*.yml). A new named volume takes its
+# ownership from the directory the image has at that path, and from root when the
+# image has none - and the dump is written as `node`, so without this line every
+# backup fails with EACCES the moment it starts. Found by running one in Docker.
+RUN mkdir -p /var/agency-hub/backups && chown node:node /var/agency-hub/backups
+
 USER node
 EXPOSE 3000
 CMD ["node", "apps/api/dist/index.js"]

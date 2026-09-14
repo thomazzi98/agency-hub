@@ -94,6 +94,9 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       API_PORT: ${API_PORT:-3000}
       DATABASE_URL: ${DATABASE_URL_DOCKER:?DATABASE_URL_DOCKER must be set (see .env.example)}
+      # Queueing a job goes through pg-boss, which connects as the owner (env.ts).
+      DB_OWNER_USER: ${DB_OWNER_USER:-agencyhub}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:-agencyhub}
       PASSWORD_PEPPER: ${PASSWORD_PEPPER:?PASSWORD_PEPPER must be set (see .env.example)}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
