@@ -9,7 +9,7 @@ import {
   uniqueIp,
   withIp,
 } from '../helpers/app.js';
-import { closeTestPrisma, resetDatabase, testPrisma } from '../helpers/prisma.js';
+import { auditActions, closeTestPrisma, resetDatabase, testPrisma } from '../helpers/prisma.js';
 
 const prisma = testPrisma();
 let app: FastifyInstance;
@@ -235,9 +235,7 @@ describe('POST /api/auth/login', () => {
       ),
     );
 
-    const actions = (await prisma.auditLog.findMany({ select: { action: true } })).map(
-      (entry) => entry.action,
-    );
+    const actions = await auditActions();
     expect(actions).toContain('auth.login_succeeded');
     expect(actions).toContain('auth.login_failed');
   });
@@ -471,10 +469,7 @@ describe('POST /api/auth/reauthenticate', () => {
     );
 
     expect(response.statusCode).toBe(401);
-    const actions = (await prisma.auditLog.findMany({ select: { action: true } })).map(
-      (entry) => entry.action,
-    );
-    expect(actions).toContain('auth.reauthentication_failed');
+    expect(await auditActions()).toContain('auth.reauthentication_failed');
   });
 });
 

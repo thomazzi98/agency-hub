@@ -19,7 +19,9 @@
     "postinstall": "prisma generate",
     "db:seed": "tsx src/scripts/seed.ts",
     "start:e2e": "tsx src/index.ts",
-    "db:seed:e2e": "tsx src/scripts/seed-e2e.ts"
+    "db:seed:e2e": "tsx src/scripts/seed-e2e.ts",
+    "db:provision": "node scripts/provision-app-role.mjs",
+    "db:setup": "npm run db:provision && npm run db:migrate:deploy"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

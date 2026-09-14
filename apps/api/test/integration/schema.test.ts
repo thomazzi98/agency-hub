@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestPrisma, resetDatabase, testPrisma } from '../helpers/prisma.js';
+import { withSystemScope } from '../../src/shared/tenant-scope.js';
 
 const prisma = testPrisma();
 
@@ -7,6 +8,17 @@ async function createUser(email: string) {
   return prisma.user.create({
     data: { name: 'Fulano de Tal', email, passwordHash: 'hash', role: 'contributor' },
   });
+}
+
+/** companies and company_memberships are behind RLS; fixtures need the system scope. */
+async function createCompany(name: string) {
+  return withSystemScope(prisma, (tx) => tx.company.create({ data: { name } }));
+}
+
+async function createMembership(userId: string, companyId: string) {
+  return withSystemScope(prisma, (tx) =>
+    tx.companyMembership.create({ data: { userId, companyId } }),
+  );
 }
 
 describe('stage 1 schema', () => {
@@ -39,22 +51,18 @@ describe('stage 1 schema', () => {
 
   it('rejects a duplicate membership for the same user and company', async () => {
     const user = await createUser('member@example.com');
-    const company = await prisma.company.create({ data: { name: 'Cliente A' } });
+    const company = await createCompany('Cliente A');
 
-    await prisma.companyMembership.create({ data: { userId: user.id, companyId: company.id } });
+    await createMembership(user.id, company.id);
 
-    await expect(
-      prisma.companyMembership.create({ data: { userId: user.id, companyId: company.id } }),
-    ).rejects.toMatchObject({ code: 'P2002' });
+    await expect(createMembership(user.id, company.id)).rejects.toMatchObject({ code: 'P2002' });
   });
 
   it('defaults membership permission overrides to false', async () => {
     const user = await createUser('overrides@example.com');
-    const company = await prisma.company.create({ data: { name: 'Cliente B' } });
+    const company = await createCompany('Cliente B');
 
-    const membership = await prisma.companyMembership.create({
-      data: { userId: user.id, companyId: company.id },
-    });
+    const membership = await createMembership(user.id, company.id);
 
     expect(membership.status).toBe('active');
     expect(membership.canManageCampaigns).toBe(false);
@@ -63,11 +71,11 @@ describe('stage 1 schema', () => {
 
   it('refuses to delete a company that still has memberships', async () => {
     const user = await createUser('restrict@example.com');
-    const company = await prisma.company.create({ data: { name: 'Cliente C' } });
-    await prisma.companyMembership.create({ data: { userId: user.id, companyId: company.id } });
+    const company = await createCompany('Cliente C');
+    await createMembership(user.id, company.id);
 
-    await expect(prisma.company.delete({ where: { id: company.id } })).rejects.toMatchObject({
-      code: 'P2003',
-    });
+    await expect(
+      withSystemScope(prisma, (tx) => tx.company.delete({ where: { id: company.id } })),
+    ).rejects.toMatchObject({ code: 'P2003' });
   });
 });

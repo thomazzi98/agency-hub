@@ -17,7 +17,9 @@ if (!databaseUrl) {
 
 export default defineConfig({
   testDir: './tests',
-  globalSetup: './global-setup.ts',
+  // The database is prepared by the `test:e2e` script rather than a globalSetup hook,
+  // because Playwright starts `webServer` first and the API now verifies its database
+  // role at boot.
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

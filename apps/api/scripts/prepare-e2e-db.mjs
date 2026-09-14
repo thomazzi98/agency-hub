@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { config as loadDotenv } from 'dotenv';
+import { withOwnerCredentials } from './database-url.mjs';
 
 const require = createRequire(import.meta.url);
 const apiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,8 +28,9 @@ if (!databaseName.includes('_e2e')) {
   throw new Error(`Refusing to drop "${databaseName}": an E2E database name must contain "_e2e".`);
 }
 
+/** The E2E URL carries the application role, which cannot create or drop databases. */
 function maintenanceConnectionString() {
-  const url = new URL(databaseUrl);
+  const url = new URL(withOwnerCredentials(databaseUrl));
   url.pathname = '/postgres';
   url.search = '';
   return url.toString();
@@ -61,8 +63,9 @@ try {
   await client.end();
 }
 
+run(process.execPath, [path.join(apiDir, 'scripts', 'provision-app-role.mjs'), databaseUrl]);
 run(process.execPath, [binPath('prisma', 'prisma'), 'migrate', 'deploy'], {
-  DATABASE_URL: databaseUrl,
+  DATABASE_URL: withOwnerCredentials(databaseUrl),
 });
 run(process.execPath, [binPath('tsx', 'tsx'), 'src/scripts/seed-e2e.ts'], {
   DATABASE_URL: databaseUrl,

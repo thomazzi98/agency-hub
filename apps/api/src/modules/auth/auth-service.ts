@@ -3,6 +3,7 @@ import { getEnv } from '../../config/env.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
 import { badRequest, tooManyRequests, unauthorized } from '../../shared/errors.js';
 import { loadActor, type AuthenticatedActor } from '../../shared/actor.js';
+import { withSystemScope } from '../../shared/tenant-scope.js';
 import { hashPassword, verifyAgainstDecoy, verifyPassword } from './password.js';
 import {
   createSession,
@@ -63,7 +64,7 @@ export interface LoginResult {
   actor: AuthenticatedActor;
 }
 
-export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
+export async function login(db: PrismaClient, input: LoginInput): Promise<LoginResult> {
   const email = normalizeEmail(input.email);
 
   await assertIpWithinRateLimit(db, input.ipAddress);
@@ -142,7 +143,7 @@ export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
     ipAddress: input.ipAddress,
   });
 
-  const actor = await loadActor(db, user.id, session.id);
+  const actor = await withSystemScope(db, (tx) => loadActor(tx, user.id, session.id));
   if (!actor) {
     throw invalidCredentials();
   }

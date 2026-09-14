@@ -2,6 +2,7 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { UserRole, UserStatus } from '@prisma/client';
 import { buildApp } from '../../src/app.js';
 import { hashPassword } from '../../src/modules/auth/password.js';
+import { withSystemScope } from '../../src/shared/tenant-scope.js';
 import { testPrisma } from './prisma.js';
 
 export function buildTestApp(): FastifyInstance {
@@ -33,8 +34,33 @@ export async function createTestUser(options: CreateUserOptions = {}) {
   });
 }
 
+/** Tenant-owned tables are behind RLS, so fixtures are created in the system scope. */
 export async function createTestCompany(name = `Cliente ${crypto.randomUUID().slice(0, 8)}`) {
-  return testPrisma().company.create({ data: { name } });
+  return withSystemScope(testPrisma(), (tx) => tx.company.create({ data: { name } }));
+}
+
+export interface MembershipOptions {
+  canManageCampaigns?: boolean;
+  canDeleteCompanyFiles?: boolean;
+  status?: 'active' | 'revoked';
+}
+
+export async function grantMembership(
+  userId: string,
+  companyId: string,
+  options: MembershipOptions = {},
+) {
+  return withSystemScope(testPrisma(), (tx) =>
+    tx.companyMembership.create({
+      data: {
+        userId,
+        companyId,
+        status: options.status ?? 'active',
+        canManageCampaigns: options.canManageCampaigns ?? false,
+        canDeleteCompanyFiles: options.canDeleteCompanyFiles ?? false,
+      },
+    }),
+  );
 }
 
 /** Each caller gets its own source IP so the per-IP login limit never bleeds across tests. */

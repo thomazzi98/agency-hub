@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { config as loadDotenv } from 'dotenv';
+import { withOwnerCredentials } from './database-url.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const apiDir = path.resolve(scriptDir, '..');
@@ -24,10 +25,12 @@ if (!Number.isInteger(steps) || steps < 1) {
   throw new Error('--steps must be a positive integer');
 }
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
+if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not set');
 }
+
+// Rolling back is DDL, which the least-privilege application role cannot run.
+const databaseUrl = withOwnerCredentials(process.env.DATABASE_URL);
 
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();

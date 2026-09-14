@@ -2,7 +2,7 @@
   "name": "agency-hub",
   "private": true,
   "version": "0.0.0",
-  "description": "Multi-tenant agency operations platform — specification in docs/, implementation in apps/",
+  "description": "Multi-tenant agency operations platform \u2014 specification in docs/, implementation in apps/",
   "workspaces": [
     "apps/*",
     "e2e"
@@ -17,8 +17,8 @@
     "build": "npm run build --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui"
+    "test:e2e": "node apps/api/scripts/prepare-e2e-db.mjs && playwright test --config e2e/playwright.config.ts",
+    "test:e2e:ui": "node apps/api/scripts/prepare-e2e-db.mjs && playwright test --config e2e/playwright.config.ts --ui"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

@@ -14,6 +14,22 @@ export const AuditAction = {
   ReauthenticationFailed: 'auth.reauthentication_failed',
   SessionRevoked: 'auth.session_revoked',
   AllSessionsRevoked: 'auth.all_sessions_revoked',
+
+  CompanyCreated: 'company.created',
+  CompanyUpdated: 'company.updated',
+  CompanyArchived: 'company.archived',
+  CompanyRestored: 'company.restored',
+
+  UserCreated: 'user.created',
+  UserUpdated: 'user.updated',
+  UserStatusChanged: 'user.status_changed',
+  UserPasswordReset: 'user.password_reset',
+
+  MembershipGranted: 'membership.granted',
+  MembershipUpdated: 'membership.updated',
+  MembershipRevoked: 'membership.revoked',
+
+  CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 
 export interface AuditEntry {
@@ -26,16 +42,24 @@ export interface AuditEntry {
   ipAddress?: string | null;
 }
 
+/**
+ * A plain INSERT rather than `prisma.auditLog.create`, which appends `RETURNING *`:
+ * under the append-only RLS policy the new row need not be readable by the writer
+ * (a platform-level event has no company), and RETURNING would fail the SELECT check.
+ */
 export async function writeAuditLog(db: Db, entry: AuditEntry): Promise<void> {
-  await db.auditLog.create({
-    data: {
-      actorId: entry.actorId ?? null,
-      companyId: entry.companyId ?? null,
-      action: entry.action,
-      entityType: entry.entityType ?? null,
-      entityId: entry.entityId ?? null,
-      metadata: entry.metadata,
-      ipAddress: entry.ipAddress ?? null,
-    },
-  });
+  const metadata = entry.metadata === undefined ? null : JSON.stringify(entry.metadata);
+
+  await db.$executeRaw`
+    INSERT INTO audit_logs (actor_id, company_id, action, entity_type, entity_id, metadata, ip_address)
+    VALUES (
+      ${entry.actorId ?? null}::uuid,
+      ${entry.companyId ?? null}::uuid,
+      ${entry.action},
+      ${entry.entityType ?? null},
+      ${entry.entityId ?? null}::uuid,
+      ${metadata}::jsonb,
+      ${entry.ipAddress ?? null}
+    )
+  `;
 }

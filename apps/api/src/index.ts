@@ -1,7 +1,8 @@
 import { loadDotenv } from './config/dotenv.js';
 import { buildApp } from './app.js';
 import { getEnv } from './config/env.js';
-import { disconnectPrismaClient } from './shared/db.js';
+import { disconnectPrismaClient, getPrismaClient } from './shared/db.js';
+import { assertLeastPrivilegeDatabaseRole } from './shared/tenant-scope.js';
 
 loadDotenv();
 
@@ -26,7 +27,9 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   });
 }
 
-app.listen({ port: env.API_PORT, host: '0.0.0.0' }).catch((error: unknown) => {
-  app.log.error({ err: error }, 'failed to start');
-  void disconnectPrismaClient().finally(() => process.exit(1));
-});
+assertLeastPrivilegeDatabaseRole(getPrismaClient())
+  .then(() => app.listen({ port: env.API_PORT, host: '0.0.0.0' }))
+  .catch((error: unknown) => {
+    app.log.error({ err: error }, 'failed to start');
+    void disconnectPrismaClient().finally(() => process.exit(1));
+  });

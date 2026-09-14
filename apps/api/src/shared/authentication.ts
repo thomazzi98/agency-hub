@@ -4,6 +4,7 @@ import { getEnv } from '../config/env.js';
 import { forbidden, unauthorized } from './errors.js';
 import { loadActor, type AuthenticatedActor } from './actor.js';
 import { findUsableSession, touchSession } from '../modules/auth/session-service.js';
+import { withSystemScope } from './tenant-scope.js';
 
 declare module 'fastify' {
   interface FastifyContextConfig {
@@ -87,7 +88,11 @@ export function registerAuthentication(app: FastifyInstance): void {
       throw unauthorized('unauthenticated', 'Sessão inválida ou expirada.');
     }
 
-    const actor = await loadActor(app.prisma, session.userId, session.id);
+    // company_memberships is behind RLS, and at this point there is no tenant
+    // context yet — resolving who the actor is must run in the system scope.
+    const actor = await withSystemScope(app.prisma, (tx) =>
+      loadActor(tx, session.userId, session.id),
+    );
     if (!actor) {
       clearSessionCookie(reply);
       throw unauthorized('account_inactive', 'Esta conta não está ativa.');
