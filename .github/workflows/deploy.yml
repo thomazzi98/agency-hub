@@ -93,6 +93,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      # Lets the job's own token pull the images it just built, so the VPS needs no
+      # personal access token to be created and rotated by hand.
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -117,12 +122,13 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
-          # The registry login uses a token scoped to reading packages, not the
-          # deploy key and not a personal token.
+          # The registry login uses the run's own short-lived token, scoped to reading
+          # packages; GHCR_READ_TOKEN, if set, takes precedence for installations that
+          # prefer a long-lived one. Never the deploy key, never a personal token.
           script: |
             set -Eeuo pipefail
             cd "${{ secrets.DEPLOY_PATH || '/opt/agency-hub' }}"
-            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             chmod +x scripts/deploy.sh
             APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/agency-hub' }}" \
             IMAGE_REPO="${{ env.IMAGE_REPO }}" \

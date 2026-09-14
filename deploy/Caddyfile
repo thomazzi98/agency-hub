@@ -7,6 +7,13 @@
 # APP_DOMAIN is supplied by docker-compose.prod.yml. Caddy obtains and renews the
 # certificate itself; there is no certificate cron to forget.
 
+# Anything that reaches port 80 under a name that is not the site - typically the bare
+# IP address typed into a browser - is sent to the site. No certificate can ever be
+# issued for an IP, so the IP itself is never served, only redirected.
+http:// {
+	redir https://{$APP_DOMAIN}{uri} permanent
+}
+
 {$APP_DOMAIN} {
 	encode zstd gzip
 
