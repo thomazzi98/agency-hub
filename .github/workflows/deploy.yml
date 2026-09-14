@@ -1,0 +1,146 @@
+name: Deploy
+
+# Every push to main deploys, and only after the same checks CI runs
+# (docs/sdd/19-deployment-and-cicd.md). `workflow_dispatch` exists so a rollback can
+# be triggered from the Actions tab by giving an earlier tag.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (leave empty to build from this commit)'
+        required: false
+        type: string
+
+concurrency:
+  # One deploy at a time, and a newer one waits rather than cancelling: a half-applied
+  # deploy that gets cancelled mid-migration is the worst outcome available here.
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_REPO: ${{ github.repository }}
+
+jobs:
+  # The gate. A deploy that skipped these would be a deploy of unknown code.
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: tag
+        name: Decide the tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "Rolling to an existing tag; no build needed."
+          else
+            echo "value=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip building for a rollback
+        if: inputs.tag != ''
+        run: echo "Tag ${{ inputs.tag }} already exists in the registry."
+
+      - uses: docker/setup-buildx-action@v3
+        if: inputs.tag == ''
+
+      - uses: docker/login-action@v3
+        if: inputs.tag == ''
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the API image
+        if: inputs.tag == ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}-api:${{ steps.tag.outputs.value }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push the web image
+        if: inputs.tag == ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}-web:${{ steps.tag.outputs.value }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}-web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      # The compose file and the deploy script are copied up rather than baked into an
+      # image: they are how the VPS is operated, and they have to match the commit
+      # being deployed.
+      - name: Copy the deploy files to the VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: 'docker-compose.prod.yml,scripts/deploy.sh,deploy/Caddyfile'
+          target: ${{ secrets.DEPLOY_PATH || '/opt/agency-hub' }}
+          overwrite: true
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          # The registry login uses a token scoped to reading packages, not the
+          # deploy key and not a personal token.
+          script: |
+            set -Eeuo pipefail
+            cd "${{ secrets.DEPLOY_PATH || '/opt/agency-hub' }}"
+            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            chmod +x scripts/deploy.sh
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/agency-hub' }}" \
+            IMAGE_REPO="${{ env.IMAGE_REPO }}" \
+              ./scripts/deploy.sh "${{ needs.build.outputs.tag }}"
+            docker logout ghcr.io
+
+      - name: Report
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### Deployed \`${{ needs.build.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Deploy failed"
+              echo ""
+              echo "The database volume was not touched. To go back to the previous tag,"
+              echo "run this workflow from the Actions tab with that tag as the input,"
+              echo "or run \`./scripts/deploy.sh <tag>\` on the VPS."
+              echo "See \`docs/deployment.md#rollback\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

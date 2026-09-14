@@ -1057,19 +1057,84 @@ says as much, and puts restore testing in Phase 2 alongside the automatic strate
 
 ---
 
+## Stage 15 - CI/CD hardening and production deploy (done, minus the first real deploy)
+
+**Status:** implemented and validated locally, 2026-09-14. The one thing that cannot be
+done from here is running it against a real VPS - see "What is not done" below.
+
+### Delivered
+
+- **[docker-compose.prod.yml](../docker-compose.prod.yml):** PostgreSQL with **no
+  published port**, images pulled by tag rather than built on the host, migrations as a
+  separate awaited service, and a named volume for the data.
+- **[apps/web/Dockerfile](../apps/web/Dockerfile) + [deploy/Caddyfile](../deploy/Caddyfile):**
+  one container serving the built frontend, proxying `/api`, and getting its own
+  certificate. Same-origin in production exactly as the Vite proxy is locally, so
+  nothing in the application branches on the environment.
+- **[scripts/deploy.sh](../scripts/deploy.sh):** the *only* implementation of "deploy".
+  CI runs it over SSH and a person runs it by hand with the same arguments, which is
+  what stops the automated and manual paths drifting apart.
+- **[.github/workflows/deploy.yml](../.github/workflows/deploy.yml):** push to `main` →
+  the full CI workflow → build and push both images to GHCR → deploy. A
+  `workflow_dispatch` input takes an existing tag, which is how a rollback runs from
+  the Actions tab without rebuilding.
+- **Two new gates in CI**, both runnable locally:
+  - `npm run check:migrations` - refuses a migration with no `down.sql`, or one that
+    drops or deletes anything without a `-- destructive: <why>` line. A reviewer can
+    miss one `DROP COLUMN` in three hundred lines of `CREATE TABLE`; this cannot.
+  - `npm run check:compose` - reads the *resolved* production compose configuration and
+    refuses a published PostgreSQL port, an image built on the host, a session cookie
+    that is not `Secure`, or a missing data volume.
+- **[docs/deployment.md](deployment.md):** VPS setup, the GitHub Secrets list, what a
+  deploy does step by step, the rollback runbook including the destructive-migration
+  case, and the four things that must be done by hand before going live.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| A rollback is `deploy.sh <earlier-tag>` | One procedure to remember, and it is the one people have already run. A separate rollback path is a path nobody has practised. |
+| The compose check parses `docker compose config`, not the YAML | A port added through an override, an anchor or a merge key is caught just the same. Grepping the file would have missed all three. |
+| `concurrency: cancel-in-progress: false` | Cancelling a deploy mid-migration is the worst outcome available here, so a newer push waits rather than interrupting. |
+| The deploy never rolls back on its own | It stops and prints the exact command. An automatic rollback after a migration has applied can make things worse, and the script cannot know whether it did. |
+| Caddy rather than nginx + certbot | One container, one config, automatic certificates, and no renewal cron to forget. |
+| The production images are built in CI | `docker build` on a 2 vCPU box competes with the site it is trying to update (ADR-0011). |
+
+### What is not done
+
+**The pipeline has never run against a real VPS**, because there isn't one here. What
+*was* verified locally: both images build, the Caddyfile validates inside its image,
+`pg_dump 16.15` is present in the API image, the production compose resolves and passes
+its own review, and `deploy.sh` parses.
+
+What the first real deploy will exercise for the first time: the SSH hop, the GHCR pull
+from the VPS, certificate issuance, and the health check against a real domain. The
+roadmap says not to treat this stage as "just YAML", and that is the part it means.
+
+The three drills the acceptance criteria ask for - a successful automated deploy, a
+deliberately broken migration halting the pipeline without touching the volume, and one
+rollback - all need that environment. They are written up in
+[deployment.md](deployment.md#rollback) so they can be run in order.
+
+---
+
 ## Next step
 
-**Stage 15 - CI/CD hardening and production deploy**
-([roadmap](sdd/21-mvp-roadmap.md#stage-15--cicd-hardening--production-deploy)), the last
-stage, then the final MVP review.
+**The final MVP review.** Every stage is implemented; what is left is to look at the
+whole thing rather than the piece in front of us:
 
-Concrete first action: read [19-deployment-and-cicd.md](sdd/19-deployment-and-cicd.md)
-and compare it against the workflow already in `.github/workflows/` from Stage 0 - that
-one runs lint, typecheck, tests and build, and the gap to close is everything around
-them: the migration review gate, the deploy job, and the rollback path that must never
-touch the Postgres volume.
+1. **Functional gaps** against [documentation.md](../documentation.md) and
+   [03-functional-requirements.md](sdd/03-functional-requirements.md) - every acceptance
+   criterion in [22-acceptance-criteria.md](sdd/22-acceptance-criteria.md), checked.
+2. **Security** against [16-security-requirements.md](sdd/16-security-requirements.md):
+   the tenant-isolation surface as a whole, not one module at a time.
+3. **UX states** - loading, empty and error on every screen
+   ([12-ui-ux-guidelines.md](sdd/12-ui-ux-guidelines.md)).
+4. **Performance** - N+1 patterns and index coverage
+   ([17-performance-requirements.md](sdd/17-performance-requirements.md)), including the
+   connection-pool load test that is still open question #8.
 
-Carried forward and still open, all of them needing something outside this environment:
-the R2 bucket's CORS and lifecycle rules (**direct browser uploads to R2 fail without
-CORS**), the real-device upload pass, one real push delivered to a phone, and one real
-`pg_dump` restored into a throwaway database.
+Then the four environment-dependent items in
+[deployment.md](deployment.md#before-the-first-production-deploy), which are the real
+remaining work: R2 CORS (**uploads fail without it**), one push to a phone, one
+interrupted upload on a real device, and one backup restored into a throwaway database.

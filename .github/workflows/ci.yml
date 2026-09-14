@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Called by deploy.yml, so a deploy can never ship code these checks did not see
+  # (docs/sdd/19-deployment-and-cicd.md).
+  workflow_call:
 
 jobs:
   build-and-test:
@@ -42,6 +45,14 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      # Refuses a migration that drops data without saying why, or one with no
+      # down.sql (docs/sdd/19-deployment-and-cicd.md#migrations).
+      - name: Review migrations
+        run: node scripts/check-migrations.mjs
 
       - name: Typecheck
         run: npm run typecheck
@@ -105,5 +116,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate docker-compose configuration
+      - name: Validate the development compose file
         run: docker compose config
+
+      - name: Review the production compose file
+        # Checks the resolved configuration, not the YAML text: a port added through
+        # an override or an anchor is caught just the same.
+        run: node scripts/check-production-compose.mjs
+
+      - name: Build the production images
+        run: |
+          docker build -f apps/api/Dockerfile -t agency-hub-api:ci .
+          docker build -f apps/web/Dockerfile -t agency-hub-web:ci .

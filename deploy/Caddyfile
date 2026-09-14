@@ -1,0 +1,56 @@
+# Production reverse proxy and static host (docs/sdd/19-deployment-and-cicd.md).
+#
+# One container serves the built frontend and proxies /api to the API service, which
+# keeps the session cookie same-origin exactly as the Vite dev proxy does locally —
+# so nothing in the application branches on which environment it is in.
+#
+# APP_DOMAIN is supplied by docker-compose.prod.yml. Caddy obtains and renews the
+# certificate itself; there is no certificate cron to forget.
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Sent on every response, including the static ones (16-security-requirements.md).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# The app loads nothing from a third party; uploads go straight to storage,
+		# which is why connect-src has to allow it.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: {$STORAGE_PUBLIC_ORIGIN}; connect-src 'self' {$STORAGE_PUBLIC_ORIGIN}; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:3000 {
+			# A 30 GB upload is signed here and sent straight to storage, so nothing
+			# large flows through this proxy — but a slow client still must not be cut
+			# off mid-request (07-upload-architecture.md).
+			transport http {
+				read_timeout 300s
+				write_timeout 300s
+			}
+		}
+	}
+
+	handle /health/* {
+		reverse_proxy api:3000
+	}
+
+	# The service worker must never be served stale: it is what decides whether a push
+	# notification arrives at all (08-notifications-and-push.md).
+	@serviceworker path /sw.js
+	header @serviceworker Cache-Control "no-cache"
+
+	# Vite fingerprints everything under /assets, so those can be cached hard.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	handle {
+		root * /srv
+		# A single-page app: unknown paths are routes, not missing files.
+		try_files {path} /index.html
+		file_server
+	}
+}
