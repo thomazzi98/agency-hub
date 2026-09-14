@@ -78,6 +78,10 @@ model User {
   brandingUpdates         BrandingSettings[]   @relation("BrandingUpdatedBy")
   createdProjects         Project[]            @relation("ProjectCreatedBy")
   createdFolders          Folder[]             @relation("FolderCreatedBy")
+  uploadedFiles           File[]               @relation("FileUploadedBy")
+  uploadSessions          UploadSession[]      @relation("UploadInitiatedBy")
+  deletionRequests        DeletionRequest[]    @relation("DeletionRequestedBy")
+  reviewedDeletions       DeletionRequest[]    @relation("DeletionReviewedBy")
 
   @@index([status])
   @@map("users")
@@ -98,11 +102,14 @@ model Company {
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdById     String?       @map("created_by") @db.Uuid
 
-  createdBy   User?               @relation("CompanyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  memberships CompanyMembership[]
-  auditLogs   AuditLog[]
-  projects    Project[]
-  folders     Folder[]
+  createdBy        User?               @relation("CompanyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  memberships      CompanyMembership[]
+  auditLogs        AuditLog[]
+  projects         Project[]
+  folders          Folder[]
+  files            File[]
+  uploadSessions   UploadSession[]
+  deletionRequests DeletionRequest[]
 
   @@index([status])
   @@index([createdById])
@@ -154,6 +161,42 @@ enum ProjectStatus {
   archived
 
   @@map("project_status")
+}
+
+enum FileStatus {
+  received
+  in_review
+  editing
+  edit_complete
+  approved
+  archived
+
+  @@map("file_status")
+}
+
+enum UploadSessionStatus {
+  pending
+  in_progress
+  completed
+  aborted
+  expired
+
+  @@map("upload_session_status")
+}
+
+enum DeletionRequestTargetType {
+  file
+  content
+
+  @@map("deletion_request_target_type")
+}
+
+enum DeletionRequestStatus {
+  pending
+  approved
+  rejected
+
+  @@map("deletion_request_status")
 }
 
 enum PasswordResetAction {
@@ -282,9 +325,11 @@ model Project {
   updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdById String?       @map("created_by") @db.Uuid
 
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  createdBy User?    @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  folders   Folder[]
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy      User?           @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  folders        Folder[]
+  files          File[]
+  uploadSessions UploadSession[]
 
   @@index([companyId, status])
   @@index([companyId, createdAt(sort: Desc)])
@@ -304,14 +349,127 @@ model Folder {
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdById    String?  @map("created_by") @db.Uuid
 
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  project      Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  parentFolder Folder?  @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
-  children     Folder[] @relation("FolderTree")
-  createdBy    User?    @relation("FolderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  parentFolder   Folder?         @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
+  children       Folder[]        @relation("FolderTree")
+  createdBy      User?           @relation("FolderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  files          File[]
+  uploadSessions UploadSession[]
 
   @@index([companyId, projectId])
   @@index([companyId, parentFolderId])
   @@index([createdById])
   @@map("folders")
+}
+
+model File {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId    String     @map("company_id") @db.Uuid
+  projectId    String?    @map("project_id") @db.Uuid
+  folderId     String?    @map("folder_id") @db.Uuid
+  originalName String     @map("original_name") @db.VarChar(400)
+  mimeType     String     @map("mime_type") @db.VarChar(160)
+  sizeBytes    BigInt     @map("size_bytes")
+  /// {company}/{project|no-project}/{file id}/{original name}. The UUID segment is
+  /// what makes the key unguessable (16-security-requirements.md).
+  storageKey   String     @unique @map("storage_key") @db.Text
+  status       FileStatus @default(received)
+  uploadedById String?    @map("uploaded_by") @db.Uuid
+  uploadedAt   DateTime   @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  archivedAt   DateTime?  @map("archived_at") @db.Timestamptz(6)
+  /// Soft delete: an approved-but-mistaken deletion stays recoverable, and the record
+  /// that the file existed is never destroyed (16-security-requirements.md).
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  folder     Folder?  @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  uploadedBy User?    @relation("FileUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, folderId, status])
+  @@index([companyId, uploadedAt(sort: Desc)])
+  @@index([companyId, projectId])
+  @@index([uploadedById])
+  @@map("files")
+}
+
+/// Control-plane bookkeeping for one in-flight multipart upload. File bytes never
+/// pass through this application (07-upload-architecture.md).
+model UploadSession {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId           String              @map("company_id") @db.Uuid
+  projectId           String?             @map("project_id") @db.Uuid
+  folderId            String?             @map("folder_id") @db.Uuid
+  initiatedById       String?             @map("initiated_by") @db.Uuid
+  storageKey          String              @map("storage_key") @db.Text
+  originalName        String              @map("original_name") @db.VarChar(400)
+  mimeType            String              @map("mime_type") @db.VarChar(160)
+  declaredSizeBytes   BigInt              @map("declared_size_bytes")
+  maxAllowedSizeBytes BigInt              @map("max_allowed_size_bytes")
+  partSizeBytes       Int                 @map("part_size_bytes")
+  /// The storage provider own multipart upload id; every abort and completion needs it.
+  providerUploadId    String              @map("provider_upload_id") @db.Text
+  status              UploadSessionStatus @default(pending)
+  fileId              String?             @unique @map("file_id") @db.Uuid
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Advanced by part activity; the cleanup job measures inactivity against it.
+  lastActivityAt      DateTime            @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  expiresAt           DateTime            @map("expires_at") @db.Timestamptz(6)
+  completedAt         DateTime?           @map("completed_at") @db.Timestamptz(6)
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  folder      Folder?      @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  initiatedBy User?        @relation("UploadInitiatedBy", fields: [initiatedById], references: [id], onDelete: Restrict)
+  parts       UploadPart[]
+
+  @@index([companyId, status])
+  @@index([status, lastActivityAt])
+  @@index([initiatedById])
+  @@map("upload_sessions")
+}
+
+/// A cache of what the browser reported committing. The provider ListParts response is
+/// the source of truth and is reconciled against this on resume and at completion.
+model UploadPart {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadSessionId String   @map("upload_session_id") @db.Uuid
+  partNumber      Int      @map("part_number")
+  etag            String   @db.VarChar(120)
+  sizeBytes       BigInt   @map("size_bytes")
+  uploadedAt      DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  uploadSession UploadSession @relation(fields: [uploadSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([uploadSessionId, partNumber])
+  @@map("upload_parts")
+}
+
+/// Removing something you did not create is a request, not an action
+/// (06-permissions-and-authorization.md#deletion-request-workflow).
+model DeletionRequest {
+  id            String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId     String                    @map("company_id") @db.Uuid
+  targetType    DeletionRequestTargetType @map("target_type")
+  targetId      String                    @map("target_id") @db.Uuid
+  requestedById String?                   @map("requested_by") @db.Uuid
+  reason        String                    @db.VarChar(1000)
+  status        DeletionRequestStatus     @default(pending)
+  reviewedById  String?                   @map("reviewed_by") @db.Uuid
+  reviewedAt    DateTime?                 @map("reviewed_at") @db.Timestamptz(6)
+  reviewNotes   String?                   @map("review_notes") @db.VarChar(1000)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedBy User?   @relation("DeletionRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?   @relation("DeletionReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@index([requestedById])
+  @@map("deletion_requests")
 }

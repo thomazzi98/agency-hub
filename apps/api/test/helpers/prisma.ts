@@ -33,3 +33,14 @@ export async function auditActions(): Promise<string[]> {
     return rows.map((row) => row.action);
   });
 }
+
+/**
+ * Tenant-owned tables are behind RLS, so a bare query on the test client sees nothing.
+ * Assertions about stored rows read through the system scope, the same way the
+ * application's own system-context code does.
+ */
+export async function systemRead<T>(
+  fn: (tx: Parameters<Parameters<typeof withSystemScope>[1]>[0]) => Promise<T>,
+): Promise<T> {
+  return withSystemScope(testPrisma(), fn);
+}

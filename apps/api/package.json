@@ -24,6 +24,8 @@
     "db:setup": "npm run db:provision && npm run db:migrate:deploy"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^10.1.0",
     "@node-rs/argon2": "^2.2.1",

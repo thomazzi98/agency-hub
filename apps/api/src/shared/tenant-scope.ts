@@ -98,6 +98,39 @@ export function tenantScoped<TResult>(handler: (context: ScopedContext) => Promi
   };
 }
 
+export interface MultiScopedContext {
+  /** Opens one scoped transaction per call. */
+  runScoped: <T>(fn: (tx: ScopedDb) => Promise<T>) => Promise<T>;
+  actor: AuthenticatedActor;
+  request: FastifyRequest;
+  reply: FastifyReply;
+}
+
+/**
+ * For handlers that must talk to an external service (object storage) between database
+ * steps. Wrapping the whole handler in one transaction would hold a pooled connection
+ * across that network call — and the pool is sized for concurrent requests, not
+ * concurrent waits (ADR-0011). Each `runScoped` call is its own short transaction with
+ * the same RLS context, so atomicity is scoped to the steps that actually need it.
+ */
+export function multiScoped<TResult>(handler: (context: MultiScopedContext) => Promise<TResult>) {
+  return async function multiScopedRouteHandler(
+    this: FastifyInstance,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<TResult> {
+    const actor = requireActor(request);
+    const prisma = this.prisma;
+
+    return handler({
+      runScoped: (fn) => withTenantScope(prisma, actor, fn),
+      actor,
+      request,
+      reply,
+    });
+  };
+}
+
 export interface DatabaseRolePrivileges {
   isSuperuser: boolean;
   bypassesRls: boolean;

@@ -31,6 +31,34 @@ const envSchema = z
     LOGIN_LOCKOUT_BASE_SECONDS: z.coerce.number().int().positive().default(30),
     LOGIN_LOCKOUT_MAX_SECONDS: z.coerce.number().int().positive().default(900),
     LOGIN_IP_MAX_ATTEMPTS_PER_HOUR: z.coerce.number().int().positive().default(20),
+
+    // Object storage. The same settings address MinIO in development and Cloudflare R2
+    // in production (07-upload-architecture.md).
+    STORAGE_ENDPOINT: z.string().url(),
+    STORAGE_ACCESS_KEY_ID: z.string().min(1),
+    STORAGE_SECRET_ACCESS_KEY: z.string().min(1),
+    STORAGE_BUCKET: z.string().min(1),
+    STORAGE_REGION: z.string().min(1).default('auto'),
+    STORAGE_FORCE_PATH_STYLE: booleanish.default('false'),
+
+    // Upload policy. Every value here is an initial configuration value, tunable
+    // without a code change, per 07-upload-architecture.md.
+    UPLOAD_MAX_FILE_BYTES: z.coerce.number().int().positive().default(32_212_254_720),
+    UPLOAD_PART_SIZE_BYTES: z.coerce
+      .number()
+      .int()
+      // The S3 multipart minimum is 5 MiB and the maximum 5 GiB; anything outside that
+      // range produces uploads the provider rejects only at completion time.
+      .min(5 * 1024 * 1024)
+      .max(5 * 1024 * 1024 * 1024)
+      .default(16 * 1024 * 1024),
+    UPLOAD_PRESIGN_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+    UPLOAD_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().default(1200),
+    UPLOAD_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+    UPLOAD_MAX_ACTIVE_SESSIONS_PER_COMPANY: z.coerce.number().int().positive().default(5),
+    UPLOAD_DOWNLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    /** Comma-separated; `image/*` matches a whole type. Empty uses the built-in list. */
+    UPLOAD_ALLOWED_MIME_TYPES: z.string().optional(),
   })
   .transform((value) => ({
     ...value,

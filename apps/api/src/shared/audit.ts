@@ -39,6 +39,19 @@ export const AuditAction = {
   FolderUpdated: 'folder.updated',
   FolderDeleted: 'folder.deleted',
 
+  UploadStarted: 'upload.started',
+  UploadCompleted: 'upload.completed',
+  UploadAborted: 'upload.aborted',
+  UploadExpired: 'upload.expired',
+
+  FileStatusChanged: 'file.status_changed',
+  FileDeleted: 'file.deleted',
+  FileDownloaded: 'file.downloaded',
+
+  DeletionRequested: 'deletion_request.created',
+  DeletionApproved: 'deletion_request.approved',
+  DeletionRejected: 'deletion_request.rejected',
+
   CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 

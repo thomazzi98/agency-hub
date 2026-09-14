@@ -24,6 +24,46 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-compatible storage for local development and tests only. Production points
+  # STORAGE_* at Cloudflare R2 (docs/sdd/07-upload-architecture.md); the application
+  # talks the same S3 API to both, so nothing in the code branches on which is behind it.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-agencyhub}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-agencyhub-dev-secret}
+    ports:
+      - '${STORAGE_PORT:-9000}:9000'
+      - '${STORAGE_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # One-shot: creates the development and test buckets if they are missing.
+  minio-buckets:
+    # The mc image publishes no stable semantic tag; it is a one-shot bucket
+    # creator for local development only, so `latest` is acceptable here.
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        mc alias set local http://minio:9000
+        "${STORAGE_ACCESS_KEY_ID:-agencyhub}" "${STORAGE_SECRET_ACCESS_KEY:-agencyhub-dev-secret}" &&
+        mc mb --ignore-existing local/"${STORAGE_BUCKET:-agency-hub-dev}" &&
+        mc mb --ignore-existing local/"${TEST_STORAGE_BUCKET:-agency-hub-test}" &&
+        mc mb --ignore-existing local/"${E2E_STORAGE_BUCKET:-agency-hub-e2e}" &&
+        mc anonymous set none local/"${STORAGE_BUCKET:-agency-hub-dev}"
+
   # One-shot: brings the database schema up to date before the API starts.
   # Production deploys run migrations from the pipeline instead
   # (docs/sdd/19-deployment-and-cicd.md#migrations).
@@ -57,6 +97,13 @@ services:
       PASSWORD_PEPPER: ${PASSWORD_PEPPER:?PASSWORD_PEPPER must be set (see .env.example)}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT_DOCKER:-http://minio:9000}
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_ENDPOINT:-http://localhost:9000}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-agencyhub}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-agencyhub-dev-secret}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-agency-hub-dev}
+      STORAGE_REGION: ${STORAGE_REGION:-auto}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
     ports:
       - '${API_PORT:-3000}:3000'
     healthcheck:
@@ -70,7 +117,11 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      minio-buckets:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
     name: agency_hub_postgres_data
+  minio_data:
+    name: agency_hub_minio_data
