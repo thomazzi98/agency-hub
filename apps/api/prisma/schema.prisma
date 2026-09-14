@@ -76,6 +76,8 @@ model User {
   passwordResetAudits     PasswordResetAudit[] @relation("PasswordResetTarget")
   performedPasswordResets PasswordResetAudit[] @relation("PasswordResetPerformer")
   brandingUpdates         BrandingSettings[]   @relation("BrandingUpdatedBy")
+  createdProjects         Project[]            @relation("ProjectCreatedBy")
+  createdFolders          Folder[]             @relation("FolderCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -99,6 +101,8 @@ model Company {
   createdBy   User?               @relation("CompanyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   memberships CompanyMembership[]
   auditLogs   AuditLog[]
+  projects    Project[]
+  folders     Folder[]
 
   @@index([status])
   @@index([createdById])
@@ -128,6 +132,28 @@ model CompanyMembership {
   @@index([userId, status])
   @@index([createdById])
   @@map("company_memberships")
+}
+
+enum ProjectType {
+  property
+  product
+  service
+  event
+  campaign
+  internal
+  other
+
+  @@map("project_type")
+}
+
+enum ProjectStatus {
+  planned
+  active
+  paused
+  completed
+  archived
+
+  @@map("project_status")
 }
 
 enum PasswordResetAction {
@@ -237,4 +263,55 @@ model BrandingSettings {
   updatedBy User? @relation("BrandingUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
 
   @@map("branding_settings")
+}
+
+/// A generic initiative container. Files and folders may also hang directly off a
+/// company with no project (05-domain-model.md), so project_id is nullable there.
+model Project {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String        @map("company_id") @db.Uuid
+  name        String        @db.VarChar(160)
+  code        String?       @db.VarChar(40)
+  type        ProjectType   @default(other)
+  description String?       @db.Text
+  status      ProjectStatus @default(active)
+  startDate   DateTime?     @map("start_date") @db.Date
+  endDate     DateTime?     @map("end_date") @db.Date
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdById String?       @map("created_by") @db.Uuid
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy User?    @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  folders   Folder[]
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([createdById])
+  @@map("projects")
+}
+
+/// Visibility follows company membership, never folder ownership: any member of the
+/// company sees every folder in it (06-permissions-and-authorization.md).
+model Folder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  projectId      String?  @map("project_id") @db.Uuid
+  parentFolderId String?  @map("parent_folder_id") @db.Uuid
+  name           String   @db.VarChar(160)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdById    String?  @map("created_by") @db.Uuid
+
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  parentFolder Folder?  @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
+  children     Folder[] @relation("FolderTree")
+  createdBy    User?    @relation("FolderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, projectId])
+  @@index([companyId, parentFolderId])
+  @@index([createdById])
+  @@map("folders")
 }

@@ -63,7 +63,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
   const hintId = `${id}-hint`;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-slate-700">
         {label}
       </label>
@@ -74,7 +74,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         aria-invalid={error ? true : undefined}
         // Errors are tied to the field programmatically, never signalled by colour alone.
         aria-describedby={error ? errorId : hint ? hintId : undefined}
-        className={`min-h-11 rounded-lg border px-3 py-2.5 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
+        className={`min-h-11 w-full rounded-lg border px-3 py-2.5 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 ${
           error
             ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
             : 'border-slate-300 focus:border-brand-500 focus:ring-brand-100'
@@ -171,7 +171,7 @@ export function SelectField({ label, error, options, className = '', ...props }:
   const errorId = `${id}-error`;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-slate-700">
         {label}
       </label>
@@ -180,7 +180,7 @@ export function SelectField({ label, error, options, className = '', ...props }:
         id={id}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        className={`min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
+        className={`min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -207,7 +207,7 @@ export function TextAreaField({ label, error, className = '', ...props }: TextAr
   const id = props.id ?? generatedId;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-slate-700">
         {label}
       </label>
@@ -215,7 +215,7 @@ export function TextAreaField({ label, error, className = '', ...props }: TextAr
         {...props}
         id={id}
         rows={props.rows ?? 4}
-        className={`rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
+        className={`w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
       />
       {error && (
         <p role="alert" className="text-xs font-medium text-red-600">

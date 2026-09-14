@@ -7,6 +7,8 @@ import { useBrand } from '../modules/branding/context';
 const navigation = [
   { to: '/', label: strings.home.title, end: true, adminOnly: false },
   { to: '/empresas', label: strings.companies.title, end: false, adminOnly: false },
+  { to: '/projetos', label: strings.projects.title, end: false, adminOnly: false },
+  { to: '/pastas', label: strings.folders.title, end: false, adminOnly: false },
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },
   { to: '/sessoes', label: strings.sessions.title, end: false, adminOnly: false },
   { to: '/identidade-visual', label: strings.branding.title, end: false, adminOnly: true },
@@ -29,7 +31,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </Link>
 
-          <nav className="order-3 flex w-full gap-1 sm:order-2 sm:w-auto" aria-label="Principal">
+          {/* A phone cannot fit every section in one row, and a wrapping nav makes the
+              sticky header eat the screen. The strip scrolls sideways instead — the one
+              place horizontal scrolling is the right answer. */}
+          <nav
+            className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto px-1 sm:order-2 sm:w-auto sm:overflow-visible"
+            aria-label="Principal"
+          >
             {navigation
               .filter((item) => !item.adminOnly || currentUser?.role === 'agency_admin')
               .map((item) => (
@@ -38,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
-                    `rounded-md px-3 py-2 text-sm font-medium transition ${
+                    `shrink-0 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition ${
                       isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
                     }`
                   }

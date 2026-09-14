@@ -354,15 +354,88 @@ content and it could not be clicked. It now sits beside the heading.
 
 ---
 
+## Stage 5 - Projects and folders (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `20260914060146_stage5_projects_and_folders` (+ `down.sql`): the
+  `projects` and `folders` tables, **their RLS policies in the same migration**, and a
+  `UNIQUE ... NULLS NOT DISTINCT` index on
+  `(company_id, project_id, parent_folder_id, lower(name))` so two folders cannot share
+  a name in the same place - `NULLS NOT DISTINCT` is what makes that hold at the
+  company root, where both project and parent are NULL.
+- **`modules/projects`:** list (company/status/type/search filters, paginated), detail,
+  create, update. A `companyId` in the query picks *which* authorized company to look
+  at and is checked against the actor's set; it is never the scope itself.
+- **`modules/folders`:** list (by company, project, or parent; `parentFolderId=root`
+  for top level), detail, create, rename/move, delete. Cycle detection walks the
+  ancestor chain inside the same transaction as the write, because Postgres will not
+  catch a folder moved under its own descendant.
+- **Frontend:** projects list and form, and a folder browser with breadcrumb
+  navigation, inline rename, and delete.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| `client_manager` cannot create or edit projects | The matrix shows "🔶 (rare; default ❌)", but the only membership overrides the data model carries are campaigns and file deletion ([23-open-questions.md](sdd/23-open-questions.md) #9), so the default applies. |
+| Project status enum: `planned / active / paused / completed / archived` | The spec names a status field without enumerating it; these are the states an agency actually tracks, and `archived` matches the company-archival vocabulary already in use. |
+| A folder is deletable only when empty, and by its creator or an agency role | Files inside follow the deletion-request workflow instead, so a folder never takes files down with it. |
+| Folder names are unique case-insensitively within a place | Two folders called "Contratos" and "contratos" side by side are indistinguishable to a user. |
+| `ON DELETE RESTRICT` from folders to projects | Archiving a project must not touch its folders, and nothing in the product deletes a project. |
+
+### Three real UI bugs the E2E suite caught
+
+1. **The navigation row could not wrap or scroll.** With seven sections it overflowed
+   a 393 px phone, so mobile Chrome zoomed the whole page out by 1.44x - which also
+   made buttons below the fold unclickable. The nav is now a horizontally scrollable
+   strip: the one place sideways scrolling is the right answer. This was a real
+   violation of the no-horizontal-scroll rule in
+   [12-ui-ux-guidelines.md](sdd/12-ui-ux-guidelines.md#mobile-first), not a test artifact.
+2. **`height: 100%` on `html`/`body`** capped the document at the viewport while the
+   content overflowed it, breaking scroll-into-view on a phone.
+3. **Form controls did not shrink.** An `<input>`'s intrinsic width is its min-content
+   width and grid/flex items default to `min-width: auto`, so a bare input widened its
+   track past the viewport. Controls now carry `w-full` inside a `min-w-0` wrapper.
+
+Also fixed while there: the "new folder" field is locked while a create is in flight,
+because it is cleared on success and would otherwise silently discard whatever the
+user typed meanwhile; and a user with no company now sees a visible message rather
+than a disabled dropdown whose only `<option>` explains the problem.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass (api, web, e2e) |
+| Unit + integration | `npm test` | 141 passed / 11 files |
+| Projects and folders, including cross-tenant | `apps/api/test/integration/projects-folders.test.ts` | 24 passed |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 44 passed / 2 projects |
+| Migration up → down → up (all five) | `apps/api/test/integration/migrations.test.ts` | pass |
+
+**What would invalidate this:** changes to the folder placement/cycle checks, the
+uniqueness index, or the shared form controls in `apps/web/src/components/ui.tsx`.
+
+---
+
 ## Next step
 
-**Stage 5 - Projects and folders** ([roadmap](sdd/21-mvp-roadmap.md#stage-5--projects-and-folders)).
+**Stage 6 - Upload architecture** ([roadmap](sdd/21-mvp-roadmap.md#stage-6--upload-architecture-the-critical-path)).
+The roadmap calls this the highest-risk, highest-value stage and says not to split or
+rush it.
 
-Concrete first action: add the `projects` and `folders` tables to the Prisma schema
-plus a migration (with `down.sql`) that **also enables RLS and a `tenant_isolation`
-policy on both** - every new tenant-owned table needs its policy in the same
-migration that creates it, and a cross-tenant test in
-`apps/api/test/integration/tenant-isolation.test.ts` before the stage is done. Then
-build `modules/projects` using `tenantScoped()`, with the contributor-visibility rule
-from [06-permissions-and-authorization.md](sdd/06-permissions-and-authorization.md):
-a contributor sees every folder in their company regardless of who created it.
+Read [07-upload-architecture.md](sdd/07-upload-architecture.md) in full first. Concrete
+first action: add the `upload_sessions`, `upload_parts`, `files`, and
+`deletion_requests` tables plus their RLS policies in one migration (with `down.sql`),
+then build the presign/parts/complete/abort control plane against R2.
+
+Two things to settle at the start of that stage:
+- **Local development without R2 credentials.** Add MinIO to `docker-compose.yml` for
+  development and tests only, with production pointing at real R2 through
+  `R2_ENDPOINT`. The `.env` already carries real R2 credentials, so an integration
+  test must never be pointed at them by accident - guard it the way the `_test`
+  database-name check does.
+- **Branding asset upload** now fills the existing `logoUrl` / `faviconUrl` /
+  `loginImageUrl` fields, with the limits recorded in Stage 4 above.

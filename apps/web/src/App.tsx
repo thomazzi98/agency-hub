@@ -10,6 +10,9 @@ import CompaniesPage from './pages/CompaniesPage';
 import CompanyFormPage from './pages/CompanyFormPage';
 import UsersPage from './pages/UsersPage';
 import UserFormPage from './pages/UserFormPage';
+import ProjectsPage from './pages/ProjectsPage';
+import ProjectFormPage from './pages/ProjectFormPage';
+import FoldersPage from './pages/FoldersPage';
 import BrandingPage from './pages/BrandingPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { BrandingProvider } from './modules/branding/BrandingProvider';
@@ -78,6 +81,50 @@ export default function App() {
                 <AdminRoute>
                   <CompanyFormPage />
                 </AdminRoute>
+              }
+            />
+
+            <Route
+              path="/projetos"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <ProjectsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projetos/novo"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <ProjectFormPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projetos/:id"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <ProjectFormPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/pastas"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <FoldersPage />
+                  </AppShell>
+                </ProtectedRoute>
               }
             />
 

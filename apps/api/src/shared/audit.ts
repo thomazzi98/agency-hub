@@ -31,6 +31,14 @@ export const AuditAction = {
 
   BrandingUpdated: 'branding.updated',
 
+  ProjectCreated: 'project.created',
+  ProjectUpdated: 'project.updated',
+  ProjectStatusChanged: 'project.status_changed',
+
+  FolderCreated: 'folder.created',
+  FolderUpdated: 'folder.updated',
+  FolderDeleted: 'folder.deleted',
+
   CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 

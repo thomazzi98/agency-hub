@@ -145,6 +145,63 @@ export const strings = {
     permissionsNote:
       'Estas permissões valem apenas para esta empresa — o mesmo usuário pode ter permissões diferentes em outra.',
   },
+  projects: {
+    title: 'Projetos',
+    new: 'Novo projeto',
+    newTitle: 'Novo projeto',
+    editTitle: 'Editar projeto',
+    empty: 'Nenhum projeto por aqui ainda.',
+    emptyHint: 'Crie um projeto para agrupar pastas, arquivos e conteúdos de uma empresa.',
+    emptyReadOnlyHint: 'Quando a agência criar projetos para esta empresa, eles aparecem aqui.',
+    searchPlaceholder: 'Buscar por nome ou código',
+    name: 'Nome',
+    code: 'Código',
+    company: 'Empresa',
+    type: 'Tipo',
+    status: 'Situação',
+    description: 'Descrição',
+    startDate: 'Início',
+    endDate: 'Término',
+    notes: 'Observações',
+    created: 'Projeto criado.',
+    updated: 'Projeto atualizado.',
+    noPeriod: 'Sem período definido',
+  },
+  projectTypes: {
+    property: 'Imóvel',
+    product: 'Produto',
+    service: 'Serviço',
+    event: 'Evento',
+    campaign: 'Campanha',
+    internal: 'Interno',
+    other: 'Outro',
+  },
+  projectStatuses: {
+    planned: 'Planejado',
+    active: 'Ativo',
+    paused: 'Pausado',
+    completed: 'Concluído',
+    archived: 'Arquivado',
+  },
+  folders: {
+    title: 'Pastas',
+    new: 'Nova pasta',
+    name: 'Nome da pasta',
+    root: 'Raiz',
+    empty: 'Nenhuma pasta aqui.',
+    emptyHint: 'Crie a primeira pasta para organizar os arquivos desta empresa.',
+    emptyReadOnlyHint: 'Ainda não há pastas nesta empresa.',
+    open: 'Abrir',
+    rename: 'Renomear',
+    remove: 'Excluir',
+    subfolderCount: (count: number) => (count === 1 ? '1 subpasta' : `${count} subpastas`),
+    confirmRemove: 'Excluir esta pasta? Ela precisa estar vazia.',
+    created: 'Pasta criada.',
+    renamed: 'Pasta renomeada.',
+    removed: 'Pasta excluída.',
+    selectCompany: 'Selecione uma empresa para ver as pastas.',
+    noCompanies: 'Você ainda não tem acesso a nenhuma empresa.',
+  },
   branding: {
     title: 'Identidade visual',
     appName: 'Nome do sistema',
@@ -184,6 +241,12 @@ export const strings = {
     account_inactive: 'Esta conta não está ativa. Fale com o administrador.',
     forbidden: 'Você não tem permissão para esta ação.',
     not_found: 'Registro não encontrado.',
+    folder_name_taken: 'Já existe uma pasta com este nome neste local.',
+    folder_not_empty: 'Esvazie a pasta antes de excluí-la.',
+    folder_cycle: 'Uma pasta não pode ser movida para dentro dela mesma.',
+    unknown_project: 'Projeto não encontrado nesta empresa.',
+    unknown_parent_folder: 'Pasta de destino não encontrada nesta empresa.',
+    invalid_date_range: 'A data de término não pode ser anterior ao início.',
     insufficient_contrast:
       'A cor escolhida não tem contraste suficiente com o texto branco. Escolha um tom mais escuro.',
     email_taken: 'Já existe um usuário com este e-mail.',
@@ -199,4 +262,12 @@ export const strings = {
 
 export function roleLabel(role: string): string {
   return (strings.roles as Record<string, string>)[role] ?? role;
+}
+
+export function projectTypeLabel(type: string): string {
+  return (strings.projectTypes as Record<string, string>)[type] ?? type;
+}
+
+export function projectStatusLabel(status: string): string {
+  return (strings.projectStatuses as Record<string, string>)[status] ?? status;
 }
