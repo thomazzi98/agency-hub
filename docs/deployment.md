@@ -49,8 +49,38 @@ Then, as `deploy`, create `/opt/agency-hub/.env` from
 [`.env.example`](../.env.example) with real values. **That file is the only place
 production secrets live on the box**; it is never committed and never printed.
 
+Beyond the values `.env.example` carries for development, production needs these — the
+compose file refuses to start without the ones marked required, so a missing one fails
+loudly at deploy time rather than quietly at first use:
+
+| Variable                                       | Value in production                                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `APP_DOMAIN` (required)                        | The domain Caddy serves and gets its certificate for.                                                                   |
+| `STORAGE_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_BUCKET` (required) | The R2 values (`R2_*` in `.env.example`), with `STORAGE_FORCE_PATH_STYLE=false`.                       |
+| `STORAGE_PUBLIC_ORIGIN` (required)             | `https://<account>.r2.cloudflarestorage.com` — the origin the browser PUTs file parts to. The Content-Security-Policy in [deploy/Caddyfile](../deploy/Caddyfile) allows exactly this origin; left out, the browser would block every upload with nothing in any server log. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DB_OWNER_USER`, `DB_OWNER_PASSWORD`, `DATABASE_URL` (required) | The owner role and the least-privilege `agency_hub_app` role, as in `.env.example` but with real passwords. |
+| `PASSWORD_PEPPER` (required)                   | Long and random; permanent for the life of the database.                                                                |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Its **own** pair, from `npm run push:keys --workspace=@agency-hub/api`. Empty disables push; in-app notifications still work. |
+| `BACKUP_ENCRYPTION_KEY`                        | Optional, 64 hex characters. Empty stores dumps compressed but unencrypted on the volume.                              |
+| `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`  | Who the first administrator is (see below).                                                                            |
+
 Point the domain's A/AAAA records at the VPS before the first deploy — Caddy asks for
 the certificate on startup and needs the name to already resolve.
+
+### The first administrator
+
+After the first successful deploy, once — the runtime image ships the compiled seed,
+and it is a no-op if an `agency_admin` already exists:
+
+```bash
+cd /opt/agency-hub
+docker compose -f docker-compose.prod.yml run --rm --no-deps --entrypoint sh api \
+  -c 'node apps/api/dist/scripts/seed.js'
+```
+
+It prints a temporary password **exactly once**; the account must change it at first
+sign-in. Run it through the `api` service, not `migrate`: the seed needs the full
+application environment, which only `api` carries.
 
 ## GitHub Secrets
 
@@ -123,6 +153,43 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint sh migrate \
   -c 'npm run db:migrate:down --workspace=@agency-hub/api'
 ```
 
+## Rehearsals
+
+Two scripts rehearse the parts of this page that only matter on a bad day, each on a
+PostgreSQL that exists only while the script runs — nothing in them reads `.env` or can
+reach a real database:
+
+- **`./scripts/migration-drill.sh`** — applies every migration, adds one that cannot
+  succeed, and proves the deploy would halt: CI's migration review refuses it, `migrate
+  deploy` fails and rolls the whole file back (including its valid statements), a second
+  deploy is refused until someone resolves it, and after recovery the newest real
+  migration is reversed with its `down.sql` and re-applied. Run it before any deploy
+  whose migration you are not certain of.
+- **`./scripts/restore-drill.sh <backup.dump>`** — restores a dump downloaded from the
+  admin screen into a throwaway database with `--exit-on-error` and reports what came
+  back. [sdd/11-backup-and-recovery.md](sdd/11-backup-and-recovery.md) asks for this at
+  least monthly: a backup nobody has restored is a file, not a backup.
+
+Both passed on 2026-09-14. The same day, `docker-compose.prod.yml` was brought up
+locally against a private registry standing in for GHCR, and
+[`scripts/deploy.sh`](../scripts/deploy.sh) ran the three drills Stage 15 asks for: a
+deploy went end to end (pull → migrate → schema version → restart → health →
+`.deployed-tag`), a deploy of an image whose migration step could not run stopped at
+that step with nothing restarted and the volume untouched, and a rollback to the earlier
+tag went through with the same command. What that rehearsal cannot cover is the VPS
+itself — the SSH hop, the GHCR login, DNS and certificate issuance — which the first
+real deploy will exercise for the first time.
+
+### If the backups volume predates 2026-09-14
+
+Images built before that date created the `backups` volume owned by root, and the job
+writes as `node`, so every backup failed with `EACCES`. The image now owns the
+directory, which a **new** volume inherits; an existing one needs a one-off fix:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -u root worker chown node:node /var/agency-hub/backups
+```
+
 ## Never, under any circumstances
 
 These are not conventions; they are the ways this deployment loses data permanently
@@ -151,14 +218,53 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint sh migrate \
 
 ## Before the first production deploy
 
-Four things cannot be verified from a development machine and must be done once:
+Checked on 2026-09-14 against the real bucket and the real VPS, read-only. What each
+item needs, in the order it has to happen:
 
-1. **Apply CORS and lifecycle rules to the R2 bucket.** Direct browser uploads **fail
-   without CORS** — `npm run storage:configure --workspace=@agency-hub/api` against the
-   production credentials ([sdd/07-upload-architecture.md](sdd/07-upload-architecture.md)).
-2. **Generate a VAPID key pair** (`npm run push:keys --workspace=@agency-hub/api`), set
-   the three `VAPID_*` variables, and confirm one push arrives on a real phone.
-3. **Upload a large file from a real phone** on a real connection, and interrupt it —
-   resumability is the point of that subsystem and has never been exercised on a device.
-4. **Take one backup and restore it into a throwaway database.** An untested backup is
-   not a backup.
+1. **Decide the domain and point it at the VPS.** Nothing below can be finished without
+   it: Caddy needs it for the certificate, and the bucket needs it for CORS. It appears
+   nowhere in the repository or in `.env` today.
+2. **Apply CORS to the R2 bucket.** The bucket `agency-hub` exists and the credentials
+   in `.env` are accepted, but **it has no CORS configuration** — direct browser uploads
+   fail until it does. The 7-day abort-incomplete-multipart lifecycle rule is already
+   present (R2 applies it by default). With the domain known:
+
+   ```bash
+   STORAGE_ENDPOINT=$R2_ENDPOINT STORAGE_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID \
+   STORAGE_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY STORAGE_BUCKET=$R2_BUCKET \
+   STORAGE_FORCE_PATH_STYLE=false \
+     npm run storage:configure --workspace=@agency-hub/api -- --origin https://<domain>
+   ```
+
+   It writes one rule: `PUT`, `GET`, `HEAD` from that origin, all request headers,
+   `ETag` exposed (without it multipart completion has nothing to assemble from), cached
+   for an hour. Then confirm from a browser on the site that an upload completes.
+3. **Provision the VPS** per [First-time VPS setup](#first-time-vps-setup). From the
+   development machine: port 22 answers, ports 80 and 443 do not, the `id_ed25519` key
+   there matches `VPS_SSH_PUBLIC_KEY`, and `.env` names `root` as the user. Whether
+   Docker, the `deploy` user, the firewall and `/opt/agency-hub/.env` exist has not been
+   checked from here — signing in to the server was left to a person.
+4. **Set the GitHub side.** The repository has no secrets and no `production`
+   environment yet, and `origin/main` is still at Stage 0 — the MVP has never been
+   pushed, so CI has never run on it. Needed: the secrets in
+   [GitHub Secrets](#github-secrets), including a `GHCR_READ_TOKEN` (a personal access
+   token with `read:packages`; only a person can create one), and then a push to `main`,
+   which runs CI, publishes both images and deploys.
+5. **Create the first administrator** ([above](#the-first-administrator)).
+6. **Generate the production VAPID pair** (`npm run push:keys --workspace=@agency-hub/api`),
+   put it in the VPS `.env`, redeploy, and confirm one push arrives on a real phone: sign
+   in on the phone, open Notificações → "Ativar avisos neste dispositivo", accept the
+   prompt, then have someone else open a pendência addressed to you. The device
+   contract (register, list, revoke) is covered by E2E; delivery through a push service
+   is not reachable from a headless browser. The development `.env` has its own pair.
+7. **Upload a large file from a real phone** on mobile data, and interrupt it: lock the
+   screen, switch to Wi-Fi mid-transfer, then pause and resume from the queue, then
+   cancel one and confirm the prompt. Watch that a paused item never advances, a
+   resumed one continues rather than restarting at 0%, and the cancelled one is gone
+   from the list. Every one of those transitions is covered by E2E at a phone viewport
+   with parked and refused storage requests; what only a device can show is the
+   behaviour of a real radio.
+8. **Take one backup from the admin screen and run `./scripts/restore-drill.sh` on it.**
+   Done locally on 2026-09-14 through the real job (`pg_dump` in the image, streamed
+   download, `pg_restore` with zero errors, every count matching); repeat it once on
+   the VPS so the volume and the image there are the ones proven.

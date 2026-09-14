@@ -81,6 +81,13 @@ npm run test:e2e  # end-to-end (Playwright), desktop and mobile viewports
 
 The E2E suite starts its own API and web server on dedicated ports and uses `E2E_DATABASE_URL`, so it never disturbs a running development stack.
 
+Two rehearsals for the operational side, each on a PostgreSQL that exists only while the script runs — see [docs/deployment.md](docs/deployment.md#rehearsals):
+
+```bash
+./scripts/migration-drill.sh                 # a failing migration halts, rolls back, and the newest one reverses
+./scripts/restore-drill.sh <backup.dump>     # a backup downloaded from the admin screen restores cleanly
+```
+
 ## Documentation
 
 - **Start here:** [docs/README.md](docs/README.md)

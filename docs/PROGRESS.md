@@ -1185,6 +1185,112 @@ screen that has both. Caught by an existing E2E that asserted the alert's exact 
 | Migration + compose review | `npm run check:migrations`, `npm run check:compose` | pass |
 | Unit + integration | `npm test` | **381 passed / 23 files** |
 | End-to-end (desktop + mobile) | `npm run test:e2e` | **92 passed** |
+---
+
+## Validation phase — E2E audit, drills, production readiness (done, minus what needs a person)
+
+**Status:** complete for everything reachable from a development machine, 2026-09-14.
+Started from a clean tree at `121b6e5`, every claim of the final review re-verified
+before anything was changed: 92 E2E passed in 3.1 min, Playwright 1.63 with Chromium
+installed, configuration intact.
+
+### What the E2E audit found missing, now covered
+
+Eleven tests added (46 → 57 per viewport; **113 passed + 1 phone-only skip on desktop**),
+each on the desktop and Pixel 5 projects, in the existing spec files' style — nothing
+existing was replaced:
+
+| Gap | Test | What only a browser could prove |
+|---|---|---|
+| Session ending mid-use | `auth.spec.ts` → session expiry during use | A tab whose session was revoked elsewhere is sent to sign-in on its next click, and told why |
+| Isolation between two companies, IDOR | `tenant-isolation.spec.ts` | No list or selector offers the other company; a guessed id in the address bar or fired at the API with the browser's own cookie is byte-identical to one that never existed; a role the UI never offers is refused by the server |
+| Several files at once | `uploads.spec.ts` → upload lifecycle controls | Three rows, three progress bars, all finishing, queue clearable |
+| Pause / resume | same | Pause holds while storage is parked, resume completes through the real `ListParts` path |
+| Cancel with confirmation | same | Dismiss keeps it in flight; accept aborts the session on the server |
+| Failed start, retry the same file | same | The row says why; the picker accepts the same file again |
+| Transient part failure | same | A part refused once with a 503 completes on retry — **failed against the previous uploader** |
+| Push device register / revoke | `notifications.spec.ts` → push devices | Register → listed → remove asks first → revoked on the server and gone after reload |
+| Mark all read | `notifications.spec.ts` → the notification centre | Unread view empties, badge goes quiet, nothing deleted |
+| Paging past one screen, invalid values | `ux-states.spec.ts` → pagination and layout | 21 rows walked with the pager; `page=0`, `page=abc`, `pageSize=0` refused with the field named; `pageSize=10000` capped at 100 |
+| No sideways scroll on a phone | same (mobile only) | Every screen measured for document overflow |
+
+What the E2E deliberately mocks, and why: headless Chromium has no push service and its
+headless shell answers "denied" to `Notification.requestPermission` whatever the context
+was granted, so those two browser facilities are stood in for; everything from the
+service worker to the register/list/revoke contract runs for real, and the API is handed
+a VAPID pair minted per run in `playwright.config.ts` (never written anywhere). Storage
+faults are injected with `page.route` on the PUTs to MinIO, which is the real transport.
+
+Claude in Chrome was not available in this environment; the visual pass was not done.
+
+### Seven real defects found, all fixed
+
+Four of them would have broken production on the first deploy. None was reachable by
+the unit or integration suites, which is why this phase existed.
+
+| # | Defect | How it was found | Fix |
+|---|---|---|---|
+| 1 | A session revoked elsewhere (or expired) left the open tab on a screen with its navigation intact and a retry button that could never succeed — nothing turned a 401 into a redirect, and the cached `/auth/me` kept every route guard convinced | New E2E | The query client hands session-lost answers to the auth module: drops the session, purges the previous person's cached rows, and the sign-in screen says why. `invalid_credentials` is also a 401 and is excluded |
+| 2 | **No upload part was ever retried.** The hand-written `uploadPartBytes` rejected with plain Errors; Uppy reads `error.source.status` to decide, so the 1 s…16 s schedule configured beside it never ran and one refused PUT failed the whole file | Reading Uppy's `#shouldRetry`, then a new E2E that failed on the old code | The XHR rides along as `source`, as Uppy's own uploader does |
+| 3 | `STORAGE_PUBLIC_ORIGIN` — the only origin the Caddy CSP lets the browser PUT to — was optional in the production compose file, absent from `.env.example` and the runbook. Empty, `connect-src` collapsed to `'self'` and every upload would have been blocked by the browser with CORS correctly configured and nothing in any log | Reading the Caddyfile against the compose file | Required in `docker-compose.prod.yml`; documented |
+| 4 | **API and worker refused to start without `BACKUP_ENCRYPTION_KEY`.** Compose passes `${VAR:-}` — `""` — and the schema accepted `undefined` but not `""`. The default configuration `.env.example` describes crash-looped | Bringing the dev stack up with the rebuilt image | `""` means "no key"; a unit test holds every optional setting to that rule |
+| 5 | **Every backup in Docker failed with `EACCES`.** The image had no `/var/agency-hub/backups`, so the named volume's mount point was root-owned and the job writes as `node`. Tests stub `pg_dump` and use a temp dir | The first real backup run | The image owns the directory before `USER node`; a one-off `chown` for pre-existing volumes is in `deployment.md` |
+| 6 | **No production deploy could pass its migration step.** `migrate` runs `npm run db:setup --workspace=…` but the runtime image carried no root `package.json`; npm stopped at `ENOENT`. The dev file calls the scripts through `node` directly | Bringing `docker-compose.prod.yml` up locally | The root manifest is in the image |
+| 7 | The dev compose `api` service lacked `DB_OWNER_USER`/`_PASSWORD`, which pg-boss needs to queue a job (the production file had them) | Same run as #4 | Added |
+
+Also found, not code: the first administrator cannot be created in production with
+`npm run db:seed` (it runs `tsx src/…`, and the image ships `dist/`). The compiled seed
+is in the image; the command, through the `api` service whose environment it needs, is
+now in `deployment.md`.
+
+### Drills, all on disposable databases
+
+- **Migration failure and rollback** — `scripts/migration-drill.sh`, new and passed: CI's
+  review refuses a migration without `down.sql`; `migrate deploy` fails with P3018 and
+  the whole file rolls back, valid statements included; rows and tables unchanged; a
+  second deploy refused with P3009; recovery via `migrate resolve`; the newest real
+  migration reversed with its `down.sql` and re-applied.
+- **Backup and restore** — through the real path against the dev stack: request from
+  the API (202), `pg_dump 16` in the worker's image, streamed download (`PGDMP`,
+  186 KB), `pg_restore` into a throwaway PostgreSQL with zero errors, 28 tables / 126
+  indexes / 22 RLS tables / 24 policies and every row count matching, passwords as
+  argon2id. `scripts/restore-drill.sh`, new, repeats it for any downloaded dump.
+- **Deploy, halt, rollback** — `docker-compose.prod.yml` brought up locally (own project,
+  own volumes, ports 8080/8443, MinIO standing in for R2) against a private registry
+  standing in for GHCR. Verified: `migrate` as a separate service; API in production
+  mode with the cookie `HttpOnly; Secure; SameSite=Lax; Max-Age=604800`; the
+  password-change gate; Caddy serving the SPA, its routes, `/api` and `/health` over TLS
+  with the security headers and a 308 to https; the first-admin seed, idempotent. Then
+  `scripts/deploy.sh` itself: `v1` deployed end to end; `v0` (the image from before
+  defect #6) halted at the migration step with nothing restarted, `.deployed-tag`
+  unchanged and 14 migrations still applied; `v2` deployed and rolled back to `v1` with
+  the same command. Everything created for it was removed afterwards — with explicit
+  `docker volume rm` of the four `agency_hub_prodsim_*` volumes, never `down -v`.
+
+### Blocked on a person, and exactly what is needed
+
+| Item | State verified today | What is needed |
+|---|---|---|
+| R2 CORS | Bucket exists, credentials accepted, **no CORS configuration**, lifecycle rule present | The production domain. Then the one command in `deployment.md` |
+| Deploy pipeline | `origin/main` is at Stage 0 (23 commits behind); no GitHub secrets, no `production` environment; port 22 answers and the local `id_ed25519` matches `VPS_SSH_PUBLIC_KEY`; 80/443 do not answer; SSH from this automation was not permitted | Domain + DNS; VPS setup by a person; a `GHCR_READ_TOKEN`; the secrets; a push to `main` |
+| VAPID / push delivery | No keys existed. A **development** pair was generated into the local `.env`, never printed | Production's own pair in the VPS `.env`; one push on a phone |
+| Interrupted upload on a device | Every transition covered by E2E at a phone viewport with parked and refused storage | A phone on mobile data; steps in `deployment.md` |
+| Restore on the VPS | Proven locally through the real job | Repeat once where the volume and image are production's |
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Migration + compose review | `npm run check:migrations`, `npm run check:compose` | pass |
+| Unit + integration | `npm test` | **385 passed / 24 files** |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | **113 passed, 1 skipped** (phone-only test on desktop) |
+| Production images | `docker build` both; `caddy validate` inside the web image | pass; CSP resolves to the storage origin |
+| Drills | `scripts/migration-drill.sh`, `scripts/restore-drill.sh`, `deploy.sh` v1 / v0 / v2→v1 | pass |
+
+Tests were run selectively while working — the spec or module a change touched, then
+the full suites at three milestones: the baseline before any change, after the
+authentication and test-infrastructure changes, and here at the end.
 
 ---
 
@@ -1195,20 +1301,10 @@ committed. What is left is not code.
 
 ### Must happen before production, and cannot be done from a development machine
 
-1. **Apply CORS and lifecycle rules to the R2 bucket.** Direct browser uploads **fail
-   without CORS** - this is the one item that breaks a core feature if skipped.
-   `npm run storage:configure --workspace=@agency-hub/api` against production
-   credentials.
-2. **Run the deploy pipeline once.** The SSH hop, the GHCR pull from the VPS,
-   certificate issuance and the health check against a real domain have never executed.
-   Then the two drills the roadmap asks for: a deliberately broken migration halting
-   without touching the volume, and one rollback.
-3. **Generate a VAPID pair and confirm one push on a phone.** Everything on this side is
-   built and tested; delivery through a real push service is not.
-4. **Upload a large file from a real device and interrupt it.** Resumability is the
-   point of that subsystem and has only ever been exercised in a desktop browser.
-5. **Take one backup and restore it into a throwaway database.** An untested backup is
-   not a backup.
+Everything a development machine could rehearse has been (see the validation phase
+above); what remains needs a domain, the VPS, a GitHub token or a phone. The exact list,
+with what was verified about each and the command to run, is
+[deployment.md — Before the first production deploy](deployment.md#before-the-first-production-deploy).
 
 ### Known and deliberate
 
