@@ -30,7 +30,7 @@ async function planContent(page: Page, companyName: string, title: string) {
   await page.getByRole('button', { name: 'Criar' }).click();
   await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Calendário' }).click();
+  await page.getByRole('link', { name: 'Calendário', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Calendário' })).toBeVisible();
   await page.getByLabel('Empresa').selectOption({ label: companyName });
 
@@ -88,7 +88,7 @@ test.describe('multi-network publications', () => {
     await dialog.getByRole('button', { name: 'Registrar' }).click();
     await expect(page.getByText('Publicação registrada.')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Publicações' }).click();
+    await page.getByRole('link', { name: 'Publicações', exact: true }).click();
     // Every screen has an "Empresa" selector, so touching it before this page has
     // rendered would set the *previous* page's one and leave this one on its default.
     await expect(page.getByRole('heading', { name: 'Publicações' })).toBeVisible();

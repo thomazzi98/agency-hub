@@ -22,6 +22,7 @@ import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import { assertResponsibleHasAccess } from '../../shared/references.js';
 import { notifyContentStatusChanged } from '../notifications/events.js';
 import { PENDING_STATUSES, publicationSelect } from '../publications/publication.js';
+import { BLOCKED_ON_CLIENT_STATUS, OVERDUE_STATUSES } from './content.js';
 
 const contentType = z.enum([
   'video',
@@ -45,15 +46,6 @@ const productionStatus = z.enum([
 ]);
 
 const priority = z.enum(['low', 'medium', 'high']);
-
-/** Reached its date without being finished or called off. */
-const OVERDUE_STATUSES: ProductionStatus[] = [
-  'planned',
-  'awaiting_material',
-  'in_production',
-  'in_review',
-  'approved',
-];
 
 /**
  * A calendar screen asks for a window, not a page, so this endpoint returns every item
@@ -109,7 +101,7 @@ function withFlags(row: ContentRow, now: Date) {
     isOverdue: scheduled < now && OVERDUE_STATUSES.includes(row.productionStatus),
     // Waiting on the client to send something is the one blocked state the agency
     // cannot clear on its own.
-    isBlockedOnClient: row.productionStatus === 'awaiting_material',
+    isBlockedOnClient: row.productionStatus === BLOCKED_ON_CLIENT_STATUS,
   };
 }
 

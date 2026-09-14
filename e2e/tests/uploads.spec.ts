@@ -29,8 +29,8 @@ async function createCompany(page: Page, name: string) {
 }
 
 async function openFilesFor(page: Page, companyName: string) {
-  await page.getByRole('link', { name: 'Arquivos' }).click();
-  await expect(page.getByRole('heading', { name: 'Arquivos' })).toBeVisible();
+  await page.getByRole('link', { name: 'Arquivos', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Arquivos', exact: true })).toBeVisible();
   await page.getByLabel('Empresa').selectOption({ label: companyName });
   await expect(page.getByRole('heading', { name: 'Enviar arquivos' })).toBeVisible();
 }
@@ -147,7 +147,7 @@ test.describe('deleting a file someone else uploaded', () => {
     await createCompany(page, companyName);
 
     // Give the contributor access to this company.
-    await page.getByRole('link', { name: 'Usuários' }).click();
+    await page.getByRole('link', { name: 'Usuários', exact: true }).click();
     await page.getByLabel('Buscar').fill(contributor.email);
     await page.getByRole('button', { name: 'Buscar' }).click();
     await page.getByRole('link', { name: 'Editar' }).first().click();
@@ -185,7 +185,7 @@ test.describe('deleting a file someone else uploaded', () => {
     await page.getByRole('button', { name: 'Sair' }).click();
     await signIn(page, adminUser.email);
 
-    await page.getByRole('link', { name: 'Solicitações de exclusão' }).click();
+    await page.getByRole('link', { name: 'Solicitações de exclusão', exact: true }).click();
     await expect(page.getByText('Material enviado por engano.')).toBeVisible();
 
     await page.getByLabel('Observações da análise').fill('Confirmado com a equipe.');

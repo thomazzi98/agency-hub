@@ -2,20 +2,12 @@ import type { PrismaClient } from '@prisma/client';
 import { withSystemScope } from '../shared/tenant-scope.js';
 import { NotificationType } from '../modules/notifications/catalog.js';
 import { companyAudience, notify } from '../modules/notifications/service.js';
+import { OVERDUE_STATUSES } from '../modules/calendar/content.js';
 
 export const NOTIFY_OVERDUE_CONTENT_JOB = 'notify-overdue-content';
 
 /** Nobody needs to hear about something that slipped last quarter. */
 const LOOKBACK_DAYS = 30;
-
-/** Statuses that mean the work has not happened yet (mirrors modules/calendar). */
-const UNFINISHED = [
-  'planned',
-  'awaiting_material',
-  'in_production',
-  'in_review',
-  'approved',
-] as const;
 
 export interface OverdueSweepResult {
   overdue: number;
@@ -42,7 +34,7 @@ export async function notifyOverdueContent(
       where: {
         deletedAt: null,
         scheduledAt: { lt: now, gte: since },
-        productionStatus: { in: [...UNFINISHED] },
+        productionStatus: { in: OVERDUE_STATUSES },
       },
       select: {
         id: true,

@@ -37,7 +37,7 @@ test.describe('notifications', () => {
     await page.getByRole('button', { name: 'Criar' }).click();
     await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Usuários' }).click();
+    await page.getByRole('link', { name: 'Usuários', exact: true }).click();
     await page.getByLabel('Buscar').fill(recipient.email);
     await page.getByRole('button', { name: 'Buscar' }).click();
     await page.getByRole('link', { name: 'Editar' }).first().click();
@@ -45,7 +45,7 @@ test.describe('notifications', () => {
     await page.getByRole('button', { name: 'Vincular empresa' }).click();
     await expect(page.getByRole('status').first()).toHaveText('Acesso concedido.');
 
-    await page.getByRole('link', { name: 'Pendências' }).click();
+    await page.getByRole('link', { name: 'Pendências', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByRole('button', { name: 'Nova pendência' }).click();

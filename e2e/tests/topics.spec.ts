@@ -21,7 +21,7 @@ async function createCompanyWithMember(page: Page, companyName: string, memberEm
   await page.getByRole('button', { name: 'Criar' }).click();
   await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Usuários' }).click();
+  await page.getByRole('link', { name: 'Usuários', exact: true }).click();
   await page.getByLabel('Buscar').fill(memberEmail);
   await page.getByRole('button', { name: 'Buscar' }).click();
   await page.getByRole('link', { name: 'Editar' }).first().click();
@@ -46,7 +46,7 @@ test.describe('follow-up topics', () => {
     await signIn(page, adminUser.email);
     await createCompanyWithMember(page, companyName, contributor.email);
 
-    await page.getByRole('link', { name: 'Acompanhamentos' }).click();
+    await page.getByRole('link', { name: 'Acompanhamentos', exact: true }).click();
     await page.getByRole('button', { name: 'Novo acompanhamento' }).first().click();
 
     const dialog = page.getByRole('dialog', { name: 'Novo acompanhamento' });
@@ -65,7 +65,7 @@ test.describe('follow-up topics', () => {
     await page.getByRole('button', { name: 'Sair' }).click();
     await signIn(page, contributor.email);
 
-    await page.getByRole('link', { name: 'Acompanhamentos' }).click();
+    await page.getByRole('link', { name: 'Acompanhamentos', exact: true }).click();
     // The default view is exactly what is waiting on this person.
     await expect(page.getByRole('link', { name: subject })).toBeVisible();
 
@@ -83,7 +83,7 @@ test.describe('follow-up topics', () => {
     await page.getByRole('button', { name: 'Sair' }).click();
     await signIn(page, adminUser.email);
 
-    await page.getByRole('link', { name: 'Acompanhamentos' }).click();
+    await page.getByRole('link', { name: 'Acompanhamentos', exact: true }).click();
     await page.getByRole('button', { name: 'Criados por mim' }).click();
     await page.getByRole('link', { name: subject }).click();
 

@@ -101,7 +101,7 @@ test.describe('forced password change', () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Sessões ativas' }).click();
+    await page.getByRole('link', { name: 'Sessões ativas', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Sessões ativas' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Sair' }).click();

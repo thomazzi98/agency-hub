@@ -21,7 +21,7 @@ async function openCalendarFor(page: Page, companyName: string) {
   await page.getByRole('button', { name: 'Criar' }).click();
   await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Calendário' }).click();
+  await page.getByRole('link', { name: 'Calendário', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Calendário' })).toBeVisible();
   await page.getByLabel('Empresa').selectOption({ label: companyName });
 }

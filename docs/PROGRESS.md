@@ -855,19 +855,77 @@ notification arrives on a phone.**
 
 ---
 
+## Stage 12 - Dashboards (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **[dashboard](../apps/api/src/modules/dashboard/routes.ts):** `GET /dashboard/agency`
+  with the five filters the spec names (company, responsible, period, priority,
+  status), and `GET /dashboard/company` for the client's own view. No migration - this
+  stage only reads.
+- **Home is now the dashboard.** The agency view puts every number that needs acting on
+  in one grid, each one a link to the screen that acts on it; the client view has
+  fewer panels, no filters, and opens on what is waiting for *them*.
+- **Shared definitions extracted** so a dashboard can never disagree with the screen it
+  summarises: `calendar/content.ts` (`OVERDUE_STATUSES`), `pending-requests/status.ts`
+  (`UNFINISHED_STATUSES`, `AWAITING_RECIPIENT_STATUSES`), and the already-shared
+  `publications/publication.ts`. The calendar, the summary endpoints, the overdue
+  sweep and both dashboards now import the same lists.
+- **pt-BR copy for the audit log**, which the "últimas atividades" panel needed: the
+  codes were being rendered raw.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| Every tile is a link | A dashboard that only gives you a number makes you go and find the thing yourself. The question the spec sets is "o que preciso fazer agora?", and an answer you cannot act on is not one. |
+| The agency dashboard is refused to client roles | It is a cross-company view by construction. `client_manager` and `contributor` get the company dashboard, which is the one written for them. |
+| An `agency_manager`'s "agency-wide" view is still their companies | The matrix says "own companies' data". The scope comes from `authorizedCompanyIds`, the same helper every list endpoint uses. |
+| The activity panel is absent, not empty, for a manager | The audit log is `agency_admin`-only to read (06-permissions-and-authorization.md). The endpoint returns `null` rather than `[]`, so the client can tell "not for you" from "nothing happened". |
+| The campaign tile ships at zero | Stage 13 fills it. Declaring it now means the panel does not appear later and move everything else around. |
+| Counting stays in the database | Ten counts issued together, none of them fetching rows to tally in memory - what [17-performance-requirements.md](sdd/17-performance-requirements.md#query-efficiency) asks for. Every one of them is covered by an index added in an earlier stage. |
+
+### The bug this stage found
+
+Filters were being **spread** into each panel's `where`, so a panel's own constraint
+silently overwrote the user's: filtering by "em revisão" still showed the unfiltered
+"em produção" count, and a date range was replaced by each panel's own range. The same
+shape of mistake as the Stage 3 `findCompanyInScope` spread bug. Both are now combined
+with `AND`, and four filter tests pin it.
+
+Three E2E locator problems came out of it too, all caused by the dashboard existing:
+tiles link to the same routes as the nav (`Pendências com você` vs `Pendências`) and
+the files screen now has two headings containing "Arquivos". Nav locators are exact now.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Unit + integration | `npm test` | 326 passed / 20 files |
+| Dashboards | `apps/api/test/integration/dashboard.test.ts` | 15 passed - the counts, every filter, the role matrix, the activity panel's admin-only rule, and a foreign company answered byte-identically to one that never existed |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 78 passed |
+
+---
+
 ## Next step
 
-**Stage 12 - Dashboards**
-([roadmap](sdd/21-mvp-roadmap.md#stage-12--dashboards)).
+**Stage 13 - Campaign management**
+([roadmap](sdd/21-mvp-roadmap.md#stage-13--campaign-management)).
 
-Concrete first action: read the two dashboard sections of
-[03-functional-requirements.md](sdd/03-functional-requirements.md#dashboards) and build
-`modules/dashboard` on top of the aggregates that already exist - `GET /content/summary`
-(Stages 8 and 9) and `GET /pending-requests/summary` (Stage 10) - rather than writing
-new counting queries beside them.
+Concrete first action: add `ad_accounts`, `campaigns` and `campaign_history` in one
+migration (with `down.sql`), all three tenant-scoped - `campaign_history` through its
+campaign, the way `publications` reaches a company through its content.
 
-The agency dashboard must answer *"o que eu preciso fazer agora?"*, so the work is
-mostly composition and ordering, not new data. Two things it needs that nothing
-provides yet: "recent activity" (read from `audit_logs`, which is admin-only to
-read - check the role before offering it) and the campaign panels, which stay empty
-until Stage 13.
+The permission to watch is `can_manage_campaigns`: it already exists on
+`CompanyMembership` and `canManageCampaigns()` in
+[permissions.ts](../apps/api/src/shared/permissions.ts) already reads it, but nothing
+calls it yet. This is the stage where that override finally does something, and it is
+per-membership - the same manager may have it for one client and not another.
+
+Then fill in the two placeholders this stage left at zero: the agency dashboard's
+`campaignsNeedingAttention` and the company dashboard's `campaigns`, plus the two
+campaign events already declared in
+[the notification catalog](../apps/api/src/modules/notifications/catalog.ts).

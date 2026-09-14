@@ -31,7 +31,7 @@ test.describe('branding', () => {
     const appName = `Marca ${testInfo.project.name} ${Date.now()}`;
     const loginMessage = 'Acesso exclusivo para clientes.';
 
-    await page.getByRole('link', { name: 'Identidade visual' }).click();
+    await page.getByRole('link', { name: 'Identidade visual', exact: true }).click();
     await page.getByLabel('Nome do sistema').fill(appName);
     await page.getByLabel('Mensagem na tela de login').fill(loginMessage);
     await page.getByRole('button', { name: 'Salvar' }).click();
@@ -68,7 +68,7 @@ test.describe('branding', () => {
   test('is not reachable by a manager', async ({ page }, testInfo) => {
     await signIn(page, manager(testInfo).email);
 
-    await expect(page.getByRole('link', { name: 'Identidade visual' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Identidade visual', exact: true })).toHaveCount(0);
 
     await page.goto('/identidade-visual');
     await expect(page.getByRole('alert')).toHaveText('Você não tem permissão para esta ação.');

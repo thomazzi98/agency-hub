@@ -23,7 +23,7 @@ test.describe('companies', () => {
 
     const name = unique('Empresa', testInfo);
 
-    await page.getByRole('link', { name: 'Empresas' }).click();
+    await page.getByRole('link', { name: 'Empresas', exact: true }).click();
     await page.getByRole('link', { name: 'Nova empresa' }).first().click();
 
     await page.getByLabel('Nome').fill(name);
@@ -42,7 +42,7 @@ test.describe('companies', () => {
     await expect(page.getByRole('button', { name: 'Reativar' })).toBeVisible();
 
     // Archiving removes it from the default (active) list without deleting it.
-    await page.getByRole('link', { name: 'Empresas' }).click();
+    await page.getByRole('link', { name: 'Empresas', exact: true }).click();
     await expect(page.getByText(name)).toHaveCount(0);
 
     await page.getByLabel('Situação').selectOption('archived');
@@ -55,11 +55,11 @@ test.describe('companies', () => {
   }, testInfo) => {
     await signIn(page, manager(testInfo).email);
 
-    await page.getByRole('link', { name: 'Empresas' }).click();
+    await page.getByRole('link', { name: 'Empresas', exact: true }).click();
 
     await expect(page.getByRole('heading', { name: 'Empresas' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Nova empresa' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Usuários' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Usuários', exact: true })).toHaveCount(0);
   });
 
   test('refuses the admin-only screens to a manager who navigates straight there', async ({
@@ -87,7 +87,7 @@ test.describe('users and memberships', () => {
     await page.getByRole('button', { name: 'Criar' }).click();
     await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Usuários' }).click();
+    await page.getByRole('link', { name: 'Usuários', exact: true }).click();
     await page.getByRole('link', { name: 'Novo usuário' }).first().click();
 
     await page.getByLabel('Nome').fill('Pessoa de Teste');

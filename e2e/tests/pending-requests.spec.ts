@@ -43,7 +43,7 @@ test.describe('pending requests', () => {
     await page.getByRole('button', { name: 'Criar' }).click();
     await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Usuários' }).click();
+    await page.getByRole('link', { name: 'Usuários', exact: true }).click();
     await page.getByLabel('Buscar').fill(recipient.email);
     await page.getByRole('button', { name: 'Buscar' }).click();
     await page.getByRole('link', { name: 'Editar' }).first().click();
@@ -52,7 +52,7 @@ test.describe('pending requests', () => {
     await page.getByRole('button', { name: 'Vincular empresa' }).click();
     await expect(page.getByRole('status').first()).toHaveText('Acesso concedido.');
 
-    await page.getByRole('link', { name: 'Pendências' }).click();
+    await page.getByRole('link', { name: 'Pendências', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
@@ -70,7 +70,7 @@ test.describe('pending requests', () => {
 
     // The recipient's side: it is waiting on them, and they answer with a file.
     await signIn(page, recipient.email);
-    await page.getByRole('link', { name: 'Pendências' }).click();
+    await page.getByRole('link', { name: 'Pendências', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
@@ -100,7 +100,7 @@ test.describe('pending requests', () => {
 
     // The agency sees the answer and closes it.
     await signIn(page, admin(testInfo).email);
-    await page.getByRole('link', { name: 'Pendências' }).click();
+    await page.getByRole('link', { name: 'Pendências', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByRole('button', { name: 'Todas' }).click();

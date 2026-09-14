@@ -31,7 +31,7 @@ test.describe('projects', () => {
     const projectName = unique('Projeto', testInfo);
     await createCompany(page, companyName);
 
-    await page.getByRole('link', { name: 'Projetos' }).click();
+    await page.getByRole('link', { name: 'Projetos', exact: true }).click();
     await page.getByRole('link', { name: 'Novo projeto' }).first().click();
 
     await page.getByLabel('Empresa').selectOption({ label: companyName });
@@ -45,7 +45,7 @@ test.describe('projects', () => {
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page.getByRole('status')).toHaveText('Projeto atualizado.');
 
-    await page.getByRole('link', { name: 'Projetos' }).click();
+    await page.getByRole('link', { name: 'Projetos', exact: true }).click();
     // Scoped to the row: "Concluído" is also an option in the status filter.
     const row = page.getByRole('listitem').filter({ hasText: projectName });
     await expect(row).toBeVisible();
@@ -77,7 +77,7 @@ test.describe('projects', () => {
   }, testInfo) => {
     await signIn(page, manager(testInfo).email);
 
-    await page.getByRole('link', { name: 'Projetos' }).click();
+    await page.getByRole('link', { name: 'Projetos', exact: true }).click();
 
     await expect(page.getByText('Nenhum projeto por aqui ainda.')).toBeVisible();
   });
@@ -90,8 +90,8 @@ test.describe('folders', () => {
     const companyName = unique('Cliente', testInfo);
     await createCompany(page, companyName);
 
-    await page.getByRole('link', { name: 'Arquivos' }).click();
-    await expect(page.getByRole('heading', { name: 'Arquivos' })).toBeVisible();
+    await page.getByRole('link', { name: 'Arquivos', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Arquivos', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByLabel('Nome da pasta').fill('Fotos');
@@ -145,7 +145,7 @@ test.describe('folders', () => {
   test('tells a user with no company what to do instead of failing', async ({ page }, testInfo) => {
     await signIn(page, manager(testInfo).email);
 
-    await page.getByRole('link', { name: 'Arquivos' }).click();
+    await page.getByRole('link', { name: 'Arquivos', exact: true }).click();
 
     await expect(page.getByText('Você ainda não tem acesso a nenhuma empresa.')).toBeVisible();
   });

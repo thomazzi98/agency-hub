@@ -15,6 +15,7 @@ import {
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import type { AuthenticatedActor } from '../../shared/actor.js';
+import { AWAITING_RECIPIENT_STATUSES, UNFINISHED_STATUSES } from './status.js';
 
 const priority = z.enum(['low', 'medium', 'high']);
 
@@ -26,17 +27,6 @@ const requestStatus = z.enum([
   'completed',
   'cancelled',
 ]);
-
-/** Still needs something from someone. */
-const UNFINISHED_STATUSES: PendingRequestStatus[] = [
-  'open',
-  'awaiting_client',
-  'answered',
-  'in_review',
-];
-
-/** Specifically waiting on the person it was addressed to. */
-const AWAITING_RECIPIENT_STATUSES: PendingRequestStatus[] = ['open', 'awaiting_client'];
 
 /**
  * The views the screens need, each resolved on the server so the client never receives
