@@ -8,6 +8,27 @@ on:
   # (docs/sdd/19-deployment-and-cicd.md).
   workflow_call:
 
+# The same shape as docker-compose.yml: PostgreSQL with an owner role that runs
+# migrations and a least-privilege application role the code connects as (the API
+# refuses to start as a role that can bypass RLS), and MinIO standing in for R2 with
+# buckets whose names say they are disposable - the test tooling refuses any other.
+env:
+  DATABASE_URL: postgresql://agency_hub_app:agency-hub-app-ci@localhost:5432/agencyhub?connection_limit=10
+  TEST_DATABASE_URL: postgresql://agency_hub_app:agency-hub-app-ci@localhost:5432/agencyhub_test?connection_limit=5
+  E2E_DATABASE_URL: postgresql://agency_hub_app:agency-hub-app-ci@localhost:5432/agencyhub_e2e
+  DB_OWNER_USER: agencyhub
+  DB_OWNER_PASSWORD: agencyhub
+  PASSWORD_PEPPER: ci-only-pepper-never-used-in-production
+  SESSION_COOKIE_SECURE: 'false'
+  STORAGE_ENDPOINT: http://localhost:9000
+  STORAGE_ACCESS_KEY_ID: agencyhub
+  STORAGE_SECRET_ACCESS_KEY: agencyhub-dev-secret
+  STORAGE_BUCKET: agency-hub-test
+  TEST_STORAGE_BUCKET: agency-hub-test
+  E2E_STORAGE_BUCKET: agency-hub-e2e
+  STORAGE_REGION: auto
+  STORAGE_FORCE_PATH_STYLE: 'true'
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -27,11 +48,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    env:
-      DATABASE_URL: postgresql://agencyhub:agencyhub@localhost:5432/agencyhub?connection_limit=10
-      TEST_DATABASE_URL: postgresql://agencyhub:agencyhub@localhost:5432/agencyhub_test?connection_limit=5
-      PASSWORD_PEPPER: ci-only-pepper-never-used-in-production
-
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +55,9 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
+
+      - name: Start MinIO with the test buckets
+        run: ./scripts/ci-minio.sh
 
       - name: Install dependencies
         run: npm ci
@@ -81,12 +100,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    env:
-      DATABASE_URL: postgresql://agencyhub:agencyhub@localhost:5432/agencyhub?connection_limit=10
-      E2E_DATABASE_URL: postgresql://agencyhub:agencyhub@localhost:5432/agencyhub_e2e
-      PASSWORD_PEPPER: ci-only-pepper-never-used-in-production
-      SESSION_COOKIE_SECURE: 'false'
-
     steps:
       - uses: actions/checkout@v4
 
@@ -94,6 +107,9 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
+
+      - name: Start MinIO with the test buckets
+        run: ./scripts/ci-minio.sh
 
       - name: Install dependencies
         run: npm ci
@@ -117,7 +133,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate the development compose file
-        run: docker compose config
+        # Resolved with the documented example settings; the file requires the
+        # variables a developer would have in .env.
+        run: cp .env.example .env && docker compose config -q
 
       - name: Review the production compose file
         # Checks the resolved configuration, not the YAML text: a port added through
