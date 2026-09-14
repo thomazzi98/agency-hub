@@ -47,9 +47,28 @@ export default function SessionsPage() {
 
   const others = (sessions.data ?? []).filter((session) => !session.isCurrent);
 
+  const revokeAllButton = (
+    <Button
+      variant="danger"
+      isLoading={revokeAll.isPending}
+      onClick={() => {
+        if (window.confirm(strings.sessions.confirmRevokeAll)) {
+          revokeAll.mutate();
+        }
+      }}
+    >
+      {strings.sessions.revokeAll}
+    </Button>
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold text-slate-900">{strings.sessions.title}</h1>
+      {/* The bulk action sits beside the heading rather than below the list: on a
+          phone, a list of a dozen sessions pushes a footer button off-screen. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-slate-900">{strings.sessions.title}</h1>
+        {others.length > 0 && revokeAllButton}
+      </div>
 
       {sessions.isError && (
         <Alert tone="error" onRetry={() => void sessions.refetch()}>
@@ -108,20 +127,6 @@ export default function SessionsPage() {
 
       {!sessions.isPending && others.length === 0 && (
         <p className="text-sm text-slate-500">{strings.sessions.empty}</p>
-      )}
-
-      {others.length > 0 && (
-        <Button
-          variant="danger"
-          isLoading={revokeAll.isPending}
-          onClick={() => {
-            if (window.confirm(strings.sessions.confirmRevokeAll)) {
-              revokeAll.mutate();
-            }
-          }}
-        >
-          {strings.sessions.revokeAll}
-        </Button>
       )}
     </div>
   );

@@ -282,17 +282,87 @@ its own RLS policy **and** a cross-tenant test).
 
 ---
 
+## Stage 4 - Branding settings (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Scope decision (recorded from the Stage 3 checkpoint)
+
+The roadmap allowed resequencing Stage 4 after Stage 6 so branding assets could reuse
+the real upload system. **Taken now, with asset URLs instead of asset upload:** the
+theming plumbing is worth having early, and a second, throwaway upload path would be
+pure duplication. `logoUrl`, `faviconUrl`, and `loginImageUrl` accept plain links
+today; Stage 6 adds an upload control that fills those same fields, so neither the
+schema nor the API contract changes then.
+
+### Delivered
+
+- **Migration** `20260914054940_stage4_branding_settings` (+ `down.sql`): the
+  `branding_settings` table, seeded with the default brand, and a
+  `CREATE UNIQUE INDEX ... ((true))` that lets the database hold exactly one row.
+- **[contrast.ts](../apps/api/src/modules/branding/contrast.ts):** WCAG 2.1 relative
+  luminance and contrast ratio. A brand colour becomes the background of primary
+  buttons and dark surfaces, both carrying white text, so a colour below WCAG AA
+  (4.5:1) is refused with `422 insufficient_contrast` and a message naming the
+  measured ratio - rejected loudly rather than substituted silently.
+- **Endpoints:** `GET /api/branding` (**public** - the login screen renders the brand
+  before anyone authenticates) and `PATCH /api/branding` (`agency_admin` only).
+- **Frontend:** `BrandingProvider` overrides the CSS custom properties Tailwind's
+  utilities already read, so a colour change lands everywhere at once with no rebuild
+  and no second styling pathway; app name drives `document.title`; the login screen
+  and header show the logo or the brand name; `/identidade-visual` is the admin
+  screen, with a live preview and a contrast warning that disables Save before the
+  server has to refuse it.
+
+### Open question #6 resolved (branding asset limits)
+
+[23-open-questions.md](sdd/23-open-questions.md) item 6 asked for concrete asset
+constraints before Stage 4. Decided, to be enforced by the upload path in Stage 6:
+
+| Asset | Max size | Accepted formats |
+|---|---|---|
+| Logo | 2 MB | SVG, PNG, WebP |
+| Favicon | 256 KB | PNG, ICO |
+| Login image | 4 MB | JPEG, PNG, WebP |
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| The one-row invariant is a unique index on a constant expression, not a convention | A rule only application code respects is one careless insert away from two brands. |
+| An inaccessible colour is rejected with `422`, not silently replaced by a safe default | The spec forbids saving it *silently*; a substitution the admin did not ask for is its own surprise. Refusing names the measured ratio so they can judge how far off they are. |
+| `updated_at` now carries a database default alongside Prisma's `@updatedAt` | `@updatedAt` is maintained by the client, so the migration's own seed INSERT hit a NOT NULL with no default. The up/down test caught it. |
+| The test reset preserves and re-seeds `branding_settings` instead of deleting it | Deleting it would break the one-row invariant the database enforces; its `updated_by` reference also has to be cleared before users can be deleted. |
+| The frontend duplicates the contrast maths (`apps/web/src/lib/color.ts`) | So Save is disabled before a round-trip. The server check remains authoritative and is tested independently. |
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass (api, web, e2e) |
+| Unit + integration | `npm test` | 117 passed / 10 files |
+| Contrast maths | `apps/api/test/unit/contrast.test.ts` | 15 passed, including the WCAG reference values (black on white is 21:1) |
+| Branding API | `apps/api/test/integration/branding.test.ts` | 11 passed - public read, admin-only write for all three non-admin roles, contrast refusal, singleton preserved |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 32 passed / 2 projects |
+
+**A mobile layout bug the E2E caught:** the "encerrar as outras sessões" bulk action
+sat below the session list, so on a phone a dozen sessions pushed it under other
+content and it could not be clicked. It now sits beside the heading.
+
+**What would invalidate this:** changes to the branding migration, `contrast.ts`, or
+`BrandingProvider`.
+
+---
+
 ## Next step
 
-**Stage 4 - Branding settings** ([roadmap](sdd/21-mvp-roadmap.md#stage-4--branding-settings)).
+**Stage 5 - Projects and folders** ([roadmap](sdd/21-mvp-roadmap.md#stage-5--projects-and-folders)).
 
-The roadmap allows resequencing Stage 4 after Stage 6 so branding assets can reuse
-the real upload system. Decision for the next session: implement Stage 4 now with
-**colours, app name, and login message only** (no asset upload), and add logo/favicon
-upload once Stage 6 exists - that keeps the theming plumbing in place early without
-building a throwaway upload path. Record the outcome here.
-
-Concrete first action: add the `branding_settings` single-row table plus migration
-(with `down.sql`), then `GET /api/branding` (public, needed by the login screen
-before authentication) and `PATCH /api/branding` (agency_admin only), with WCAG AA
-contrast validation on the submitted colours.
+Concrete first action: add the `projects` and `folders` tables to the Prisma schema
+plus a migration (with `down.sql`) that **also enables RLS and a `tenant_isolation`
+policy on both** - every new tenant-owned table needs its policy in the same
+migration that creates it, and a cross-tenant test in
+`apps/api/test/integration/tenant-isolation.test.ts` before the stage is done. Then
+build `modules/projects` using `tenantScoped()`, with the contributor-visibility rule
+from [06-permissions-and-authorization.md](sdd/06-permissions-and-authorization.md):
+a contributor sees every folder in their company regardless of who created it.

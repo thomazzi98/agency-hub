@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Alert, Button, Card, TextField } from '../../components/ui';
 import { strings } from '../../lib/strings';
+import { useBrand } from '../branding/context';
 import { useCurrentUser, useLogin } from './session';
 
 export default function LoginPage() {
   const { data: currentUser } = useCurrentUser();
+  const brand = useBrand();
   const login = useLogin();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,8 +26,19 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
       <div className="w-full max-w-sm">
-        <h1 className="mb-1 text-center text-2xl font-bold text-slate-900">{strings.app.name}</h1>
-        <p className="mb-6 text-center text-sm text-slate-500">{strings.login.subtitle}</p>
+        {brand.logoUrl ? (
+          <img src={brand.logoUrl} alt={brand.appName} className="mx-auto mb-3 h-12 w-auto" />
+        ) : (
+          <h1
+            className="mb-1 text-center text-2xl font-bold"
+            style={{ color: brand.secondaryColor }}
+          >
+            {brand.appName}
+          </h1>
+        )}
+        <p className="mb-6 text-center text-sm text-slate-500">
+          {brand.loginMessage ?? strings.login.subtitle}
+        </p>
 
         <Card>
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">

@@ -167,13 +167,30 @@ DECLARE
   blocked integer;
   pass integer := 0;
 BEGIN
+  -- branding_settings is a seeded singleton, not test data: deleting it would break
+  -- the one-row invariant the database enforces. Reset it to the seeded defaults
+  -- instead, first, because its updated_by reference would otherwise block deleting
+  -- the users below.
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'branding_settings') THEN
+    UPDATE branding_settings
+       SET app_name = 'Agency Hub',
+           primary_color = '#1d4ed8',
+           secondary_color = '#0f172a',
+           logo_url = NULL,
+           favicon_url = NULL,
+           login_image_url = NULL,
+           login_message = NULL,
+           updated_by = NULL;
+  END IF;
+
   LOOP
     pass := pass + 1;
     blocked := 0;
 
     FOR target IN
       SELECT tablename FROM pg_tables
-       WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+       WHERE schemaname = 'public'
+         AND tablename NOT IN ('_prisma_migrations', 'branding_settings')
     LOOP
       BEGIN
         EXECUTE format('DELETE FROM public.%I', target.tablename);

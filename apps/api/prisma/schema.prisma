@@ -75,6 +75,7 @@ model User {
   auditLogs               AuditLog[]
   passwordResetAudits     PasswordResetAudit[] @relation("PasswordResetTarget")
   performedPasswordResets PasswordResetAudit[] @relation("PasswordResetPerformer")
+  brandingUpdates         BrandingSettings[]   @relation("BrandingUpdatedBy")
 
   @@index([status])
   @@map("users")
@@ -214,4 +215,26 @@ model LoginAttempt {
   @@index([ipAddress, createdAt(sort: Desc)])
   @@index([createdAt])
   @@map("login_attempts")
+}
+
+/// Single global row in Phase 1 — per-company (white-label) branding is explicitly
+/// postponed (14-database-design.md#platform-tables). The one-row invariant is a
+/// unique index on a constant expression, added in the migration: a convention that
+/// only application code respects is one careless insert away from two brands.
+model BrandingSettings {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appName        String   @map("app_name") @db.VarChar(60)
+  primaryColor   String   @map("primary_color") @db.Char(7)
+  secondaryColor String   @map("secondary_color") @db.Char(7)
+  logoUrl        String?  @map("logo_url") @db.Text
+  faviconUrl     String?  @map("favicon_url") @db.Text
+  loginImageUrl  String?  @map("login_image_url") @db.Text
+  loginMessage   String?  @map("login_message") @db.VarChar(280)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedById    String?  @map("updated_by") @db.Uuid
+
+  updatedBy User? @relation("BrandingUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@map("branding_settings")
 }

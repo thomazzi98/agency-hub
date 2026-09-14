@@ -10,7 +10,9 @@ import CompaniesPage from './pages/CompaniesPage';
 import CompanyFormPage from './pages/CompanyFormPage';
 import UsersPage from './pages/UsersPage';
 import UserFormPage from './pages/UserFormPage';
+import BrandingPage from './pages/BrandingPage';
 import { AdminRoute } from './routes/AdminRoute';
+import { BrandingProvider } from './modules/branding/BrandingProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,100 +27,111 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/entrar" element={<LoginPage />} />
+      <BrandingProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/entrar" element={<LoginPage />} />
 
-          <Route
-            path={CHANGE_PASSWORD_PATH}
-            element={
-              <ProtectedRoute>
-                <ChangePasswordPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path={CHANGE_PASSWORD_PATH}
+              element={
+                <ProtectedRoute>
+                  <ChangePasswordPage />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <AppShell>
-                  <HomePage />
-                </AppShell>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <HomePage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/empresas"
-            element={
-              <ProtectedRoute>
-                <AppShell>
-                  <CompaniesPage />
-                </AppShell>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/empresas"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <CompaniesPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/empresas/nova"
-            element={
-              <AdminRoute>
-                <CompanyFormPage />
-              </AdminRoute>
-            }
-          />
+            <Route
+              path="/empresas/nova"
+              element={
+                <AdminRoute>
+                  <CompanyFormPage />
+                </AdminRoute>
+              }
+            />
 
-          <Route
-            path="/empresas/:id"
-            element={
-              <AdminRoute>
-                <CompanyFormPage />
-              </AdminRoute>
-            }
-          />
+            <Route
+              path="/empresas/:id"
+              element={
+                <AdminRoute>
+                  <CompanyFormPage />
+                </AdminRoute>
+              }
+            />
 
-          <Route
-            path="/usuarios"
-            element={
-              <AdminRoute>
-                <UsersPage />
-              </AdminRoute>
-            }
-          />
+            <Route
+              path="/usuarios"
+              element={
+                <AdminRoute>
+                  <UsersPage />
+                </AdminRoute>
+              }
+            />
 
-          <Route
-            path="/usuarios/novo"
-            element={
-              <AdminRoute>
-                <UserFormPage />
-              </AdminRoute>
-            }
-          />
+            <Route
+              path="/usuarios/novo"
+              element={
+                <AdminRoute>
+                  <UserFormPage />
+                </AdminRoute>
+              }
+            />
 
-          <Route
-            path="/usuarios/:id"
-            element={
-              <AdminRoute>
-                <UserFormPage />
-              </AdminRoute>
-            }
-          />
+            <Route
+              path="/usuarios/:id"
+              element={
+                <AdminRoute>
+                  <UserFormPage />
+                </AdminRoute>
+              }
+            />
 
-          <Route
-            path="/sessoes"
-            element={
-              <ProtectedRoute>
-                <AppShell>
-                  <SessionsPage />
-                </AppShell>
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/sessoes"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <SessionsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route
+              path="/identidade-visual"
+              element={
+                <AdminRoute>
+                  <BrandingPage />
+                </AdminRoute>
+              }
+            />
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </BrandingProvider>
     </QueryClientProvider>
   );
 }

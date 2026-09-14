@@ -145,6 +145,24 @@ export const strings = {
     permissionsNote:
       'Estas permissões valem apenas para esta empresa — o mesmo usuário pode ter permissões diferentes em outra.',
   },
+  branding: {
+    title: 'Identidade visual',
+    appName: 'Nome do sistema',
+    primaryColor: 'Cor principal',
+    secondaryColor: 'Cor secundária',
+    loginMessage: 'Mensagem na tela de login',
+    logoUrl: 'URL do logo',
+    faviconUrl: 'URL do favicon',
+    loginImageUrl: 'URL da imagem de login',
+    assetHint:
+      'Cole o endereço da imagem. O envio de arquivos chega junto com o módulo de uploads.',
+    contrastError: 'Contraste insuficiente com texto branco. Escolha um tom mais escuro.',
+    contrastOk: (ratio: string, minimum: number) =>
+      `Contraste com texto branco: ${ratio}:1 (mínimo ${minimum}:1).`,
+    preview: 'Prévia',
+    previewButton: 'Botão principal',
+    saved: 'Identidade visual atualizada.',
+  },
   roles: {
     agency_admin: 'Administrador da agência',
     agency_manager: 'Gestor da agência',
@@ -166,6 +184,8 @@ export const strings = {
     account_inactive: 'Esta conta não está ativa. Fale com o administrador.',
     forbidden: 'Você não tem permissão para esta ação.',
     not_found: 'Registro não encontrado.',
+    insufficient_contrast:
+      'A cor escolhida não tem contraste suficiente com o texto branco. Escolha um tom mais escuro.',
     email_taken: 'Já existe um usuário com este e-mail.',
     membership_exists: 'Este usuário já tem acesso a esta empresa.',
     unknown_company: 'Empresa não encontrada.',

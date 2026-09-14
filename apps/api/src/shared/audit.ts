@@ -29,6 +29,8 @@ export const AuditAction = {
   MembershipUpdated: 'membership.updated',
   MembershipRevoked: 'membership.revoked',
 
+  BrandingUpdated: 'branding.updated',
+
   CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 

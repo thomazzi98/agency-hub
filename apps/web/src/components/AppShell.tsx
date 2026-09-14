@@ -2,24 +2,31 @@ import type { ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { strings } from '../lib/strings';
 import { useCurrentUser, useLogout } from '../modules/auth/session';
+import { useBrand } from '../modules/branding/context';
 
 const navigation = [
   { to: '/', label: strings.home.title, end: true, adminOnly: false },
   { to: '/empresas', label: strings.companies.title, end: false, adminOnly: false },
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },
   { to: '/sessoes', label: strings.sessions.title, end: false, adminOnly: false },
+  { to: '/identidade-visual', label: strings.branding.title, end: false, adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: currentUser } = useCurrentUser();
+  const brand = useBrand();
   const logout = useLogout();
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <Link to="/" className="text-base font-bold text-slate-900">
-            {strings.app.name}
+          <Link to="/" className="flex items-center gap-2 text-base font-bold">
+            {brand.logoUrl ? (
+              <img src={brand.logoUrl} alt={brand.appName} className="h-7 w-auto" />
+            ) : (
+              <span style={{ color: brand.secondaryColor }}>{brand.appName}</span>
+            )}
           </Link>
 
           <nav className="order-3 flex w-full gap-1 sm:order-2 sm:w-auto" aria-label="Principal">
