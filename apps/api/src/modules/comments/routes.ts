@@ -76,9 +76,17 @@ async function resolveCommentable(
       if (!file) throw notFound('not_found', 'Arquivo não encontrado.');
       return file;
     }
+    case 'content': {
+      const content = await tx.content.findFirst({
+        where: { id, deletedAt: null, ...scope },
+        select: { companyId: true },
+      });
+      if (!content) throw notFound('not_found', 'Conteúdo não encontrado.');
+      return content;
+    }
     default:
-      // `content` and `pending_request` arrive with Stages 8 and 10. The enum value and
-      // everything around it already exist, so those stages only resolve the target.
+      // `pending_request` arrives with Stage 10. The enum value and everything around
+      // it already exist, so that stage only resolves the target.
       throw unprocessable(
         'unsupported_target',
         'Ainda não é possível comentar neste tipo de item.',

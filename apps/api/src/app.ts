@@ -22,6 +22,7 @@ import { fileRoutes } from './modules/files/routes.js';
 import { deletionRequestRoutes } from './modules/deletion-requests/routes.js';
 import { commentRoutes } from './modules/comments/routes.js';
 import { topicRoutes } from './modules/topics/routes.js';
+import { calendarRoutes } from './modules/calendar/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -102,6 +103,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       await api.register(deletionRequestRoutes);
       await api.register(commentRoutes);
       await api.register(topicRoutes);
+      await api.register(calendarRoutes);
     },
     { prefix: '/api' },
   );

@@ -6,7 +6,7 @@ A multi-tenant, mobile-first web platform that centralizes a social media, conte
 
 ## Status
 
-**Stage 7: notes, comments, and follow-up topics.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
+**Stage 8: editorial calendar, content, and production tracking.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Local development
 
@@ -110,4 +110,4 @@ The E2E suite starts its own API and web server on dedicated ports and uses `E2E
 
 ## Next step
 
-Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–7 are done (scaffolding, schema, authentication, tenant isolation, branding, projects and folders, the upload subsystem, and notes/comments/follow-up topics); Stage 8 (editorial calendar and production tracking) is next. One Stage 6 acceptance item — the real-device upload validation pass — needs physical devices and has not run; see [docs/PROGRESS.md](docs/PROGRESS.md).
+Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–8 are done (scaffolding, schema, authentication, tenant isolation, branding, projects and folders, the upload subsystem, notes/comments/follow-up topics, and the editorial calendar); Stage 9 (multi-network publications) is next. One Stage 6 acceptance item — the real-device upload validation pass — needs physical devices and has not run; see [docs/PROGRESS.md](docs/PROGRESS.md).

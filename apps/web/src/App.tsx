@@ -14,6 +14,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectFormPage from './pages/ProjectFormPage';
 import FilesPage from './pages/FilesPage';
 import DeletionRequestsPage from './pages/DeletionRequestsPage';
+import CalendarPage from './pages/CalendarPage';
 import TopicsPage from './pages/TopicsPage';
 import TopicDetailPage from './pages/TopicDetailPage';
 import BrandingPage from './pages/BrandingPage';
@@ -126,6 +127,17 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <FilesPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/calendario"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <CalendarPage />
                   </AppShell>
                 </ProtectedRoute>
               }

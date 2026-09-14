@@ -48,6 +48,13 @@ export const AuditAction = {
   FileDeleted: 'file.deleted',
   FileDownloaded: 'file.downloaded',
 
+  ContentCreated: 'content.created',
+  ContentUpdated: 'content.updated',
+  ContentStatusChanged: 'content.status_changed',
+  ContentRescheduled: 'content.rescheduled',
+  ContentDuplicated: 'content.duplicated',
+  ContentDeleted: 'content.deleted',
+
   CommentCreated: 'comment.created',
   CommentUpdated: 'comment.updated',
   CommentDeleted: 'comment.deleted',

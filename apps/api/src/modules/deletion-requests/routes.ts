@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../shared/validation.js';
-import { conflict, notFound, unprocessable } from '../../shared/errors.js';
+import { conflict, notFound } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
 import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireAgencyAdmin } from '../../shared/permissions.js';
@@ -65,12 +65,16 @@ async function resolveTarget(
     return { companyId: file.companyId, label: file.originalName };
   }
 
-  // `content` targets arrive with the calendar module in Stage 8; the enum value and
-  // the workflow around it already exist, so nothing here changes then.
-  throw unprocessable(
-    'unsupported_target',
-    'Ainda não é possível solicitar exclusão deste tipo de item.',
-  );
+  const content = await tx.content.findFirst({
+    where: {
+      id: targetId,
+      deletedAt: null,
+      ...(companyIds === null ? {} : { companyId: { in: companyIds } }),
+    },
+    select: { companyId: true, title: true },
+  });
+  if (!content) throw notFound('not_found', 'Conteúdo não encontrado.');
+  return { companyId: content.companyId, label: content.title };
 }
 
 export async function deletionRequestRoutes(app: FastifyInstance): Promise<void> {
@@ -187,12 +191,16 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
           select: requestSelect,
         });
 
-        if (decision === 'approved' && existing.targetType === 'file') {
+        if (decision === 'approved') {
           // Soft delete, so an erroneous approval stays recoverable.
-          await tx.file.updateMany({
-            where: { id: existing.targetId, deletedAt: null },
-            data: { deletedAt: new Date() },
-          });
+          const data = { deletedAt: new Date() };
+          const where = { id: existing.targetId, deletedAt: null };
+
+          if (existing.targetType === 'file') {
+            await tx.file.updateMany({ where, data });
+          } else {
+            await tx.content.updateMany({ where, data });
+          }
         }
 
         await writeAuditLog(tx, {

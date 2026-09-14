@@ -203,15 +203,17 @@ describe('comments', () => {
   it('says a comment on a not-yet-built target is unsupported rather than failing oddly', async () => {
     const cookie = await sessionFor(world.contributorA);
 
+    // `pending_request` arrives in Stage 10. `content` used to be here too, until
+    // Stage 8 built it — the enum value and this flow were ready before the table was.
     const response = await app.inject(
       authed(
         {
           method: 'POST',
           url: '/api/comments',
           payload: {
-            commentableType: 'content',
+            commentableType: 'pending_request',
             commentableId: '00000000-0000-4000-8000-000000000000',
-            body: 'Sobre um conteúdo',
+            body: 'Sobre uma pendência',
           },
         },
         cookie,

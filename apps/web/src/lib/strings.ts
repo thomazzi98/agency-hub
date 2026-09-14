@@ -273,6 +273,71 @@ export const strings = {
     targetFile: 'Arquivo',
     targetContent: 'Conteúdo',
   },
+  calendar: {
+    title: 'Calendário',
+    newContent: 'Novo conteúdo',
+    editContent: 'Editar conteúdo',
+    contentTitle: 'Título',
+    scheduledAt: 'Data e hora',
+    type: 'Tipo',
+    productionStatus: 'Produção',
+    priority: 'Prioridade',
+    responsible: 'Responsável',
+    description: 'Descrição',
+    duplicate: 'Duplicar',
+    duplicatePrompt: 'Para qual data duplicar? (AAAA-MM-DD)',
+    duplicated: 'Conteúdo duplicado.',
+    invalidDate: 'Data inválida.',
+    remove: 'Excluir',
+    confirmRemove: 'Excluir este conteúdo? Ele sai do calendário, mas continua recuperável.',
+    removed: 'Conteúdo excluído.',
+    previous: 'Anterior',
+    next: 'Próximo',
+    today: 'Hoje',
+    viewsLabel: 'Visualizações do calendário',
+    empty: 'Nenhum conteúdo planejado.',
+    emptyHint: 'Crie o primeiro conteúdo para começar a planejar.',
+    emptyDay: 'Nada planejado neste dia.',
+    itemCount: (count: number) => (count === 1 ? '1 conteúdo' : `${count} conteúdos`),
+    views: {
+      month: 'Mês',
+      week: 'Semana',
+      day: 'Dia',
+      list: 'Lista',
+    },
+    flags: {
+      today: 'Hoje',
+      overdue: 'Atrasado',
+      blocked: 'Aguardando cliente',
+    },
+    summary: {
+      planned: 'Planejados',
+      awaitingMaterial: 'Aguardando material',
+      inProduction: 'Em produção',
+      inReview: 'Em revisão',
+      completed: 'Concluídos',
+      overdue: 'Atrasados',
+    },
+  },
+  contentTypes: {
+    video: 'Vídeo',
+    image: 'Imagem',
+    carousel: 'Carrossel',
+    story: 'Story',
+    reels: 'Reels',
+    youtube_short: 'YouTube Short',
+    text: 'Texto',
+    custom: 'Outro',
+  },
+  productionStatuses: {
+    planned: 'Planejado',
+    awaiting_material: 'Aguardando material',
+    in_production: 'Em produção',
+    in_review: 'Em revisão',
+    approved: 'Aprovado',
+    completed: 'Concluído',
+    cancelled: 'Cancelado',
+  },
   comments: {
     title: 'Notas e comentários',
     empty: 'Nenhuma nota ainda. Seja a primeira pessoa a comentar.',
@@ -375,6 +440,7 @@ export const strings = {
     account_inactive: 'Esta conta não está ativa. Fale com o administrador.',
     forbidden: 'Você não tem permissão para esta ação.',
     not_found: 'Registro não encontrado.',
+    range_too_large: 'O período solicitado é grande demais. Consulte no máximo um ano por vez.',
     topic_closed: 'Este acompanhamento já foi encerrado.',
     responsible_without_access: 'O responsável escolhido não tem acesso a esta empresa.',
     incomplete_relation: 'Informe o tipo e o item relacionado.',
@@ -437,6 +503,14 @@ export function topicStatusLabel(status: string): string {
 
 export function topicPriorityLabel(priority: string): string {
   return (strings.priorities as Record<string, string>)[priority] ?? priority;
+}
+
+export function contentTypeLabel(type: string): string {
+  return (strings.contentTypes as Record<string, string>)[type] ?? type;
+}
+
+export function productionStatusLabel(status: string): string {
+  return (strings.productionStatuses as Record<string, string>)[status] ?? status;
 }
 
 export function topicEmptyLabel(view: string): string {

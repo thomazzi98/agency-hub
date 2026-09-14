@@ -568,18 +568,71 @@ ceiling worth knowing about.
 
 ---
 
+## Stage 8 - Editorial calendar, content, and production tracking (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage8_content_calendar` (+ `down.sql`): the `content` table, its RLS
+  policy, and **the `(company_id, scheduled_at)` index from the start** - plus a partial
+  version of it for live rows, since every calendar query filters on `deleted_at`.
+  Adding that index after a slow screen is noticed is explicitly what
+  [17-performance-requirements.md](sdd/17-performance-requirements.md#indexing) says not
+  to do.
+- **[calendar](../apps/api/src/modules/calendar/routes.ts):** list with filters,
+  `GET /content/calendar` for a bounded window, `GET /content/summary` for production
+  tracking, create, update (reschedule and status changes included), duplicate, and
+  soft delete.
+- **Frontend:** month, week, day and list views with period navigation, the production
+  summary strip, and a content dialog.
+
+### Two placeholders closed
+
+Stage 6 and Stage 7 both left `content` unsupported because the table did not exist
+yet. Both now resolve it, exactly as those stages' notes said they would:
+
+- commenting on a content item works;
+- a deletion request can target one, and approving it soft-deletes the content row.
+
+The Stage 7 test that pinned the `content` placeholder now pins `pending_request`, the
+only one left (Stage 10).
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| The `today` / `overdue` / `blocked` flags are computed server-side | Every screen then agrees on what "overdue" means, rather than each view re-deriving it slightly differently. |
+| "Overdue" means past its date in any unfinished state | A completed or cancelled item is not late, it is done. |
+| "Blocked on client" is `awaiting_material` | It is the one state the agency cannot clear on its own, which is exactly what the spec's "client-blocked" flag is for. |
+| The calendar window is capped at 400 days | The endpoint returns everything in the range rather than a page, which is only safe because the range is bounded. A year covers the multi-month planning the spec asks for. |
+| A duplicated item restarts at `planned` | Carrying `approved` across to a new date would claim work that has not happened for it. |
+| Deleting content follows the same rule as files | Your own goes directly; anyone else's goes through the deletion-request workflow, with the same `deletion_requires_approval` code pointing the way. |
+| The month grid lists the selected day underneath | A month grid cannot show titles in a cell on a phone. Tapping a day and reading it below is the mobile-first shape; the grid still shows per-day counts. |
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass |
+| Unit + integration | `npm test` | 239 passed / 16 files |
+| Calendar and production tracking | `apps/api/test/integration/calendar.test.ts` | 22 passed - range queries including a year ahead, the over-large window refusal, each flag, the summary aggregate, duplication resetting the pipeline, and cross-tenant refusal on creation, calendar and deletion requests |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 64 passed |
+
+---
+
 ## Next step
 
-**Stage 8 - Editorial calendar, content, and production tracking**
-([roadmap](sdd/21-mvp-roadmap.md#stage-8--editorial-calendar-content-and-production-tracking)).
+**Stage 9 - Multi-network publications**
+([roadmap](sdd/21-mvp-roadmap.md#stage-9--multi-network-publications)).
 
-Concrete first action: add the `content` table with its RLS policy in one migration
-(with `down.sql`), including the `content(company_id, scheduled_at)` index the calendar
-range queries need **from the start** ([14-database-design.md](sdd/14-database-design.md#indexing-strategy)) -
-adding it after a slow screen is noticed is explicitly what the spec says not to do.
+Concrete first action: add the `publications` table in one migration (with `down.sql`),
+with its RLS policy expressed through its parent content (it has no `company_id` of its
+own, like `topic_replies` and `upload_parts`) and the `UNIQUE (content_id, network)`
+constraint from [14-database-design.md](sdd/14-database-design.md).
 
-Then, while building `modules/calendar`, close the two placeholders Stage 7 and Stage 6
-left for it:
-- `resolveCommentable` in `modules/comments/routes.ts` should resolve `content`.
-- `resolveTarget` in `modules/deletion-requests/routes.ts` should resolve `content`,
-  and approving one should soft-delete the content row.
+Then extend `GET /content/summary` with the "pending publication" count the production
+tracking section of
+[03-functional-requirements.md](sdd/03-functional-requirements.md#production-tracking)
+asks for - it is the one aggregate Stage 8 could not compute, because publications did
+not exist yet.
