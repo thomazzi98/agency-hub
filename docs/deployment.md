@@ -62,10 +62,25 @@ loudly at deploy time rather than quietly at first use:
 | `PASSWORD_PEPPER` (required)                   | Long and random; permanent for the life of the database.                                                                |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Its **own** pair, from `npm run push:keys --workspace=@agency-hub/api`. Empty disables push; in-app notifications still work. |
 | `BACKUP_ENCRYPTION_KEY`                        | Optional, 64 hex characters. Empty stores dumps compressed but unencrypted on the volume.                              |
-| `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`  | Who the first administrator is (see below).                                                                            |
+| `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_PASSWORD` | Who the first administrator is (see below). With the password set, the seed uses it instead of printing a generated one; it is temporary either way. |
 
 Point the domain's A/AAAA records at the VPS before the first deploy — Caddy asks for
 the certificate on startup and needs the name to already resolve.
+
+### Going live before the domain exists
+
+The site can be published on the VPS's public IP first, with nothing weakened. An IP
+address cannot carry a certificate, and without one the session cookie's `Secure` flag
+would keep every browser from signing in — so `APP_DOMAIN` is set to a **wildcard-DNS
+name that resolves to the IP** (`2-25-72-199.sslip.io` for `2.25.72.199`; sslip.io
+answers `<a>-<b>-<c>-<d>.sslip.io` with that address and needs no configuration).
+Caddy obtains a real Let's Encrypt certificate for it, cookies stay `Secure`, the CSP
+stays as written, and Web Push has the secure context it requires. Port 80 sends
+anything else — the bare IP typed into a browser included — to that name.
+
+When the real domain is ready: point its records at the VPS, change `APP_DOMAIN`,
+redeploy (a re-run of the workflow with the current tag is enough), and re-run
+`storage:configure` for the new origin so uploads keep working from it.
 
 ### The first administrator
 
@@ -94,7 +109,7 @@ environment is where the deploy job runs, so approvals can be added there later.
 | `DEPLOY_SSH_KEY`  | The **private** half of the dedicated deploy key. Not a personal key. |
 | `DEPLOY_PORT`     | Optional; defaults to 22.                                        |
 | `DEPLOY_PATH`     | Optional; defaults to `/opt/agency-hub`.                         |
-| `GHCR_READ_TOKEN` | A token that can read packages, so the VPS can pull images.      |
+| `GHCR_READ_TOKEN` | Optional. The job pulls with its own short-lived `GITHUB_TOKEN` (`packages: read`); set this only to use a long-lived token instead. |
 
 Application secrets — `PASSWORD_PEPPER`, `STORAGE_*`, `VAPID_*`,
 `BACKUP_ENCRYPTION_KEY`, the database passwords — live in the VPS's `.env`, not here.
@@ -129,6 +144,10 @@ A rollback is a deploy of an earlier tag. One command, the one you have already 
 cd /opt/agency-hub
 IMAGE_REPO="<owner>/agency-hub" ./scripts/deploy.sh <previous-sha>
 ```
+
+Run by hand, the VPS has to be logged in to GHCR first (`docker login ghcr.io` with a
+token that can read packages); the pipeline does that with its own token and logs out
+after.
 
 or from **Actions → Deploy → Run workflow**, giving the earlier tag as the input — it
 skips the build and deploys that tag.
@@ -203,6 +222,16 @@ These are not conventions; they are the ways this deployment loses data permanen
 - **Never echo a secret into a log**, including "just to check it is set". GitHub masks
   secrets, and that is not a reason to test it.
 
+## Checking a published site
+
+`npm run test:e2e:online` drives a real browser through the deployed site — health
+through the proxy, sign-in with the cookie flags checked, the shell, a company with a
+file sent straight to storage from the browser (which proves the bucket's CORS rule for
+that origin), archived afterwards, sign-out — on a desktop and a phone profile. It needs
+`E2E_ONLINE_BASE_URL` and an `agency_admin` whose first password change is done, in
+`E2E_ONLINE_ADMIN_EMAIL` / `E2E_ONLINE_ADMIN_PASSWORD`. It creates nothing else and
+drops nothing; the one company it leaves is archived and named for what it is.
+
 ## Checking on it
 
 ```bash
@@ -218,53 +247,66 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint sh migrate \
 
 ## Before the first production deploy
 
-Checked on 2026-09-14 against the real bucket and the real VPS, read-only. What each
-item needs, in the order it has to happen:
+State on 2026-09-14, after the go-live-by-IP work. Done means done and verified.
 
-1. **Decide the domain and point it at the VPS.** Nothing below can be finished without
-   it: Caddy needs it for the certificate, and the bucket needs it for CORS. It appears
-   nowhere in the repository or in `.env` today.
-2. **Apply CORS to the R2 bucket.** The bucket `agency-hub` exists and the credentials
-   in `.env` are accepted, but **it has no CORS configuration** — direct browser uploads
-   fail until it does. The 7-day abort-incomplete-multipart lifecycle rule is already
-   present (R2 applies it by default). With the domain known:
+**Done**
 
-   ```bash
-   STORAGE_ENDPOINT=$R2_ENDPOINT STORAGE_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID \
-   STORAGE_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY STORAGE_BUCKET=$R2_BUCKET \
-   STORAGE_FORCE_PATH_STYLE=false \
-     npm run storage:configure --workspace=@agency-hub/api -- --origin https://<domain>
-   ```
+- **VPS prepared** (`2.25.72.199`, Ubuntu 26.04 LTS, 2 vCPU / 8 GB / 95 GB free): Docker
+  29 and Compose v5 installed with get.docker.com; user `deploy` in the `docker` group;
+  `/opt/agency-hub` owned by it; ufw active allowing only 22, 80 and 443.
+- **R2 CORS applied and read back**: bucket `agency-hub`, one rule — `PUT`, `GET`,
+  `HEAD` from `https://2-25-72-199.sslip.io`, all request headers, `ETag` exposed,
+  cached for an hour. The 7-day abort-incomplete-multipart lifecycle rule is present.
+  When the real domain arrives, run `storage:configure` again with `--origin` set to it.
+- **GitHub**: `main` carries the MVP; CI is green (24 test files, 113 E2E); the Deploy
+  workflow publishes `ghcr.io/thomazzi98/agency-hub-api:<tag>` and `-web:<tag>` (first
+  tag `d29390d2c14f`); secrets `DEPLOY_HOST` and `DEPLOY_USER` are set.
+- **Prepared on the development machine**, in the git-ignored folder
+  `.deploy-secrets.local/`: the dedicated deploy key pair (`agency-hub-deploy`,
+  `agency-hub-deploy.pub`) and the complete production `.env` (`production.env`, 24
+  variables: provisional `APP_DOMAIN`, generated database passwords, pepper, production
+  VAPID pair, backup key, R2 values, first administrator with a temporary password).
 
-   It writes one rule: `PUT`, `GET`, `HEAD` from that origin, all request headers,
-   `ETag` exposed (without it multipart completion has nothing to assemble from), cached
-   for an hour. Then confirm from a browser on the site that an upload completes.
-3. **Provision the VPS** per [First-time VPS setup](#first-time-vps-setup). From the
-   development machine: port 22 answers, ports 80 and 443 do not, the `id_ed25519` key
-   there matches `VPS_SSH_PUBLIC_KEY`, and `.env` names `root` as the user. Whether
-   Docker, the `deploy` user, the firewall and `/opt/agency-hub/.env` exist has not been
-   checked from here — signing in to the server was left to a person.
-4. **Set the GitHub side.** The repository has no secrets and no `production`
-   environment yet, and `origin/main` is still at Stage 0 — the MVP has never been
-   pushed, so CI has never run on it. Needed: the secrets in
-   [GitHub Secrets](#github-secrets), including a `GHCR_READ_TOKEN` (a personal access
-   token with `read:packages`; only a person can create one), and then a push to `main`,
-   which runs CI, publishes both images and deploys.
-5. **Create the first administrator** ([above](#the-first-administrator)).
-6. **Generate the production VAPID pair** (`npm run push:keys --workspace=@agency-hub/api`),
-   put it in the VPS `.env`, redeploy, and confirm one push arrives on a real phone: sign
-   in on the phone, open Notificações → "Ativar avisos neste dispositivo", accept the
-   prompt, then have someone else open a pendência addressed to you. The device
-   contract (register, list, revoke) is covered by E2E; delivery through a push service
-   is not reachable from a headless browser. The development `.env` has its own pair.
-7. **Upload a large file from a real phone** on mobile data, and interrupt it: lock the
-   screen, switch to Wi-Fi mid-transfer, then pause and resume from the queue, then
-   cancel one and confirm the prompt. Watch that a paused item never advances, a
-   resumed one continues rather than restarting at 0%, and the cancelled one is gone
-   from the list. Every one of those transitions is covered by E2E at a phone viewport
-   with parked and refused storage requests; what only a device can show is the
-   behaviour of a real radio.
-8. **Take one backup from the admin screen and run `./scripts/restore-drill.sh` on it.**
-   Done locally on 2026-09-14 through the real job (`pg_dump` in the image, streamed
-   download, `pg_restore` with zero errors, every count matching); repeat it once on
-   the VPS so the volume and the image there are the ones proven.
+**Left to a person** — three actions the automated environment refuses to perform
+(installing an SSH key on a server, uploading a secrets file, uploading a private key),
+in Git Bash from the repository root:
+
+```bash
+# 1. Authorize the deploy key for the deploy user on the VPS
+cat .deploy-secrets.local/agency-hub-deploy.pub | ssh root@2.25.72.199 \
+  'install -d -m 700 -o deploy -g deploy /home/deploy/.ssh &&
+   cat >> /home/deploy/.ssh/authorized_keys &&
+   chown deploy:deploy /home/deploy/.ssh/authorized_keys && chmod 600 /home/deploy/.ssh/authorized_keys'
+
+# 2. Put the production .env on the VPS
+scp .deploy-secrets.local/production.env root@2.25.72.199:/opt/agency-hub/.env
+ssh root@2.25.72.199 'chown deploy:deploy /opt/agency-hub/.env && chmod 600 /opt/agency-hub/.env'
+
+# 3. Give the pipeline the private half of the deploy key
+gh secret set DEPLOY_SSH_KEY < .deploy-secrets.local/agency-hub-deploy
+```
+
+Then re-run the failed `deploy` job of the latest Deploy run (Actions → Deploy →
+Re-run failed jobs), or start the workflow with the tag to deploy. The first run will
+also issue the certificate — the name must resolve, which `sslip.io` guarantees.
+
+**After the first successful deploy**
+
+1. **Create the first administrator** ([above](#the-first-administrator)); its
+   temporary password is `BOOTSTRAP_ADMIN_PASSWORD` in the VPS `.env`, and the app
+   forces a change at first sign-in.
+2. **Run the online check**: `npm run test:e2e:online` with `E2E_ONLINE_BASE_URL`
+   and an administrator whose first password change is done.
+3. **Confirm one push on a real phone**: sign in on the phone, Notificações → "Ativar
+   avisos neste dispositivo", accept the prompt, then have someone else open a pendência
+   addressed to you. The production VAPID pair is already in the `.env`; the device
+   contract is covered by E2E, delivery through a push service only a phone can show.
+4. **Upload a large file from a real phone** on mobile data and interrupt it: lock the
+   screen, switch to Wi-Fi mid-transfer, pause and resume from the queue, cancel one and
+   confirm the prompt. Every transition is covered by E2E at a phone viewport with
+   parked and refused storage requests; what only a device can show is a real radio.
+5. **Take one backup from the admin screen and run `./scripts/restore-drill.sh` on it**,
+   so the volume and the image proven are production's.
+
+**Later: the real domain.** Point its records at the VPS, set `APP_DOMAIN` in the VPS
+`.env`, re-run the deploy, and run `storage:configure --origin https://<domain>`.
