@@ -60,6 +60,11 @@ export const AuditAction = {
   PublicationStatusChanged: 'publication.status_changed',
   PublicationRemoved: 'publication.removed',
 
+  PendingRequestCreated: 'pending_request.created',
+  PendingRequestUpdated: 'pending_request.updated',
+  PendingRequestStatusChanged: 'pending_request.status_changed',
+  PendingRequestAnswered: 'pending_request.answered',
+
   CommentCreated: 'comment.created',
   CommentUpdated: 'comment.updated',
   CommentDeleted: 'comment.deleted',

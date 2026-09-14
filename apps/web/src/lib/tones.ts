@@ -1,4 +1,5 @@
 import type { PublicationStatus } from '../modules/publications/api';
+import type { PendingRequest } from '../modules/pending-requests/api';
 
 /**
  * One visual treatment per status, defined once and reused everywhere that status
@@ -32,4 +33,16 @@ export function publicationTone(status: PublicationStatus | null): BadgeTone {
     default:
       return 'neutral';
   }
+}
+
+/**
+ * A pendência is red once its deadline has passed, amber while someone still owes an
+ * answer, and green only when it is actually closed out.
+ */
+export function pendingRequestTone(item: PendingRequest): BadgeTone {
+  if (item.status === 'completed') return 'success';
+  if (item.status === 'cancelled') return 'muted';
+  if (item.isOverdue) return 'danger';
+  if (item.isAwaitingRecipient) return 'warning';
+  return 'neutral';
 }

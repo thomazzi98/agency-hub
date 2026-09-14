@@ -11,6 +11,7 @@ const navigation = [
   { to: '/calendario', label: strings.calendar.title, end: false, adminOnly: false },
   { to: '/publicacoes', label: strings.publications.title, end: false, adminOnly: false },
   { to: '/arquivos', label: strings.files.title, end: false, adminOnly: false },
+  { to: '/pendencias', label: strings.pendingRequests.title, end: false, adminOnly: false },
   { to: '/topicos', label: strings.topics.title, end: false, adminOnly: false },
   { to: '/exclusoes', label: strings.deletionRequests.title, end: false, adminOnly: true },
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },

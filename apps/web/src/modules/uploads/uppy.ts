@@ -139,7 +139,23 @@ function uploadPartBytes(options: {
   });
 }
 
-export function createUppy(config: UploadConfig, target: () => UploadTarget) {
+/** The row the server created once every part was in place. */
+export interface UploadedFile {
+  id: string;
+  originalName: string;
+}
+
+export function createUppy(
+  config: UploadConfig,
+  target: () => UploadTarget,
+  /**
+   * Called with the file the server created. Uppy's own `upload-success` event knows
+   * only that the transfer finished; the id of the row behind it exists solely in the
+   * response to `complete`, and a caller that has to attach the file to something else
+   * needs exactly that.
+   */
+  onFileCreated?: (file: UploadedFile) => void,
+) {
   const uppy = new Uppy<FileMeta, Record<string, never>>({
     autoProceed: true,
     restrictions: {
@@ -195,7 +211,8 @@ export function createUppy(config: UploadConfig, target: () => UploadTarget) {
     },
 
     completeMultipartUpload: async (_file, { uploadId }) => {
-      await completeUploadSession(requireSessionId(uploadId));
+      const created = await completeUploadSession(requireSessionId(uploadId));
+      onFileCreated?.(created);
       return {};
     },
 

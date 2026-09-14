@@ -200,11 +200,12 @@ describe('comments', () => {
     expect(response.json().error.code).toBe('unknown_file');
   });
 
-  it('says a comment on a not-yet-built target is unsupported rather than failing oddly', async () => {
+  it('reports a comment on a target that does not exist as missing', async () => {
     const cookie = await sessionFor(world.contributorA);
 
-    // `pending_request` arrives in Stage 10. `content` used to be here too, until
-    // Stage 8 built it — the enum value and this flow were ready before the table was.
+    // Stage 10 built `pending_request`, the last commentable type that had no table
+    // behind it. Every member of the enum now resolves to a real row or to a 404 —
+    // there is no "unsupported target" branch left to fall through to.
     const response = await app.inject(
       authed(
         {
@@ -220,8 +221,8 @@ describe('comments', () => {
       ),
     );
 
-    expect(response.statusCode).toBe(422);
-    expect(response.json().error.code).toBe('unsupported_target');
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error.code).toBe('not_found');
   });
 
   it('lets an author edit and remove their own comment', async () => {

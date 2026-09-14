@@ -65,6 +65,7 @@ export const strings = {
     filters: 'Filtros',
     all: 'Todos',
     none: '—',
+    select: 'Selecione…',
     yes: 'Sim',
     no: 'Não',
     close: 'Fechar',
@@ -389,6 +390,70 @@ export const strings = {
     remove: 'Excluir',
     confirmRemove: 'Excluir esta nota?',
   },
+  pendingRequests: {
+    title: 'Pendências',
+    new: 'Nova pendência',
+    edit: 'Editar pendência',
+    titleField: 'Título',
+    description: 'Descrição',
+    descriptionHint: 'O que você precisa e por quê.',
+    responsible: 'Responsável',
+    project: 'Projeto (opcional)',
+    dueDate: 'Prazo',
+    priority: 'Prioridade',
+    status: 'Situação',
+    create: 'Criar pendência',
+    respond: 'Responder',
+    respondTitle: 'Sua resposta',
+    respondHint: 'Anexe um arquivo se precisar enviar material.',
+    attach: 'Anexar arquivo',
+    attached: (name: string) => `Anexado: ${name}`,
+    removeAttachment: 'Remover anexo',
+    responded: 'Resposta enviada.',
+    saved: 'Pendência atualizada.',
+    created: 'Pendência criada.',
+    overdue: 'Atrasada',
+    awaitingYou: 'Esperando você',
+    noDueDate: 'Sem prazo',
+    dueOn: (date: string) => `Prazo: ${date}`,
+    openedBy: 'Aberta por',
+    openedAt: 'Aberta em',
+    backToList: 'Voltar para pendências',
+    empty: {
+      all: 'Nenhuma pendência por aqui.',
+      created_by_me: 'Você ainda não abriu nenhuma pendência.',
+      awaiting_me: 'Nada esperando por você. ',
+      awaiting_others: 'Ninguém está devendo resposta agora.',
+      open: 'Nenhuma pendência em aberto.',
+      overdue: 'Nenhuma pendência atrasada.',
+      completed: 'Nenhuma pendência concluída ainda.',
+    } as Record<string, string>,
+    views: {
+      all: 'Todas',
+      created_by_me: 'Que eu abri',
+      awaiting_me: 'Esperando por mim',
+      awaiting_others: 'Esperando outros',
+      open: 'Em aberto',
+      overdue: 'Atrasadas',
+      completed: 'Concluídas',
+    },
+    summary: {
+      open: 'Abertas',
+      awaitingClient: 'Aguardando cliente',
+      answered: 'Respondidas',
+      inReview: 'Em análise',
+      overdue: 'Atrasadas',
+      awaitingMe: 'Comigo',
+    },
+  },
+  pendingRequestStatuses: {
+    open: 'Aberta',
+    awaiting_client: 'Aguardando cliente',
+    answered: 'Respondida',
+    in_review: 'Em análise',
+    completed: 'Concluída',
+    cancelled: 'Cancelada',
+  },
   topics: {
     title: 'Acompanhamentos',
     new: 'Novo acompanhamento',
@@ -500,7 +565,6 @@ export const strings = {
       'Você não pode excluir arquivos de outras pessoas. Solicite a exclusão para um administrador aprovar.',
     deletion_request_pending: 'Já existe uma solicitação de exclusão pendente para este item.',
     already_reviewed: 'Esta solicitação já foi analisada.',
-    unsupported_target: 'Ainda não é possível solicitar exclusão deste tipo de item.',
     folder_name_taken: 'Já existe uma pasta com este nome neste local.',
     folder_not_empty: 'Esvazie a pasta antes de excluí-la.',
     folder_cycle: 'Uma pasta não pode ser movida para dentro dela mesma.',
@@ -518,6 +582,7 @@ export const strings = {
     cannot_change_own_role: 'Você não pode alterar o seu próprio perfil.',
     cannot_deactivate_self: 'Você não pode desativar a sua própria conta.',
     not_planned_with_details: 'Uma rede marcada como "não planejada" não pode ter data nem link.',
+    request_closed: 'Esta pendência já foi encerrada.',
     internal_error: 'Erro interno. Tente novamente.',
     network_error: 'Não foi possível falar com o servidor. Verifique sua conexão.',
   } as Record<string, string>,
@@ -561,6 +626,14 @@ export function networkLabel(network: string): string {
 
 export function publicationStatusLabel(status: string): string {
   return (strings.publicationStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function pendingRequestStatusLabel(status: string): string {
+  return (strings.pendingRequestStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function pendingRequestEmptyLabel(view: string): string {
+  return strings.pendingRequests.empty[view] ?? 'Nenhuma pendência por aqui.';
 }
 
 export function topicEmptyLabel(view: string): string {

@@ -16,6 +16,8 @@ import FilesPage from './pages/FilesPage';
 import DeletionRequestsPage from './pages/DeletionRequestsPage';
 import CalendarPage from './pages/CalendarPage';
 import PublicationsPage from './pages/PublicationsPage';
+import PendingRequestsPage from './pages/PendingRequestsPage';
+import PendingRequestDetailPage from './pages/PendingRequestDetailPage';
 import TopicsPage from './pages/TopicsPage';
 import TopicDetailPage from './pages/TopicDetailPage';
 import BrandingPage from './pages/BrandingPage';
@@ -150,6 +152,28 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <PublicationsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/pendencias"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <PendingRequestsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/pendencias/:id"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <PendingRequestDetailPage />
                   </AppShell>
                 </ProtectedRoute>
               }

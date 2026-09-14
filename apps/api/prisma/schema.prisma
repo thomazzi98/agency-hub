@@ -89,6 +89,8 @@ model User {
   responsibleTopics       Topic[]              @relation("TopicResponsible")
   topicReplies            TopicReply[]         @relation("TopicReplyAuthor")
   responsiblePublications Publication[]        @relation("PublicationResponsible")
+  responsibleRequests     PendingRequest[]     @relation("PendingRequestResponsible")
+  createdRequests         PendingRequest[]     @relation("PendingRequestCreatedBy")
 
   @@index([status])
   @@map("users")
@@ -120,6 +122,7 @@ model Company {
   comments         Comment[]
   topics           Topic[]
   content          Content[]
+  pendingRequests  PendingRequest[]
 
   @@index([status])
   @@index([createdById])
@@ -270,6 +273,17 @@ enum ProductionStatus {
   cancelled
 
   @@map("production_status")
+}
+
+enum PendingRequestStatus {
+  open
+  awaiting_client
+  answered
+  in_review
+  completed
+  cancelled
+
+  @@map("pending_request_status")
 }
 
 enum PublicationNetwork {
@@ -425,6 +439,7 @@ model Project {
   files          File[]
   uploadSessions UploadSession[]
   content        Content[]
+  pendingRequests PendingRequest[]
 
   @@index([companyId, status])
   @@index([companyId, createdAt(sort: Desc)])
@@ -677,6 +692,38 @@ model Content {
   @@index([relatedFileId])
   @@index([createdById])
   @@map("content")
+}
+
+/// A request for something the agency needs from a client or a collaborator: a file,
+/// an answer, an approval. Responses are comments on the request, so a reply carrying
+/// a file is linked to it by construction (03-functional-requirements.md#pending-requests).
+model PendingRequest {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId         String               @map("company_id") @db.Uuid
+  projectId         String?              @map("project_id") @db.Uuid
+  title             String               @db.VarChar(200)
+  description       String               @db.Text
+  responsibleUserId String               @map("responsible_user_id") @db.Uuid
+  createdById       String?              @map("created_by") @db.Uuid
+  /// A date, not an instant: "entregar até quinta" does not have a time zone.
+  dueDate           DateTime?            @map("due_date") @db.Date
+  priority          Priority             @default(medium)
+  status            PendingRequestStatus @default(open)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  responsibleUser User     @relation("PendingRequestResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  createdBy       User?    @relation("PendingRequestCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, createdAt(sort: Desc)])
+  /// "O que estão esperando de mim?" is the query this table exists to answer.
+  @@index([responsibleUserId, status])
+  @@index([createdById, status])
+  @@index([companyId, dueDate])
+  @@index([projectId])
+  @@map("pending_requests")
 }
 
 /// One network's publication record for a content item. Phase 1 is a manual log: the

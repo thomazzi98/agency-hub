@@ -3,7 +3,7 @@ import type Uppy from '@uppy/core';
 import { Alert, Button, Card, Spinner } from './ui';
 import { strings } from '../lib/strings';
 import { formatBytes, useUploadConfig } from '../modules/uploads/api';
-import { createUppy, type UploadTarget } from '../modules/uploads/uppy';
+import { createUppy, type UploadTarget, type UploadedFile } from '../modules/uploads/uppy';
 
 type UploadState =
   'waiting' | 'uploading' | 'paused' | 'processing' | 'completed' | 'cancelled' | 'failed';
@@ -30,7 +30,7 @@ export function FileUploader({
   onUploaded,
 }: {
   target: UploadTarget;
-  onUploaded: () => void;
+  onUploaded: (file: UploadedFile) => void;
 }) {
   const config = useUploadConfig();
   const [rows, setRows] = useState<UploadRow[]>([]);
@@ -60,7 +60,11 @@ export function FileUploader({
   useEffect(() => {
     if (!config.data) return;
 
-    const uppy = createUppy(config.data, () => targetRef.current);
+    const uppy = createUppy(
+      config.data,
+      () => targetRef.current,
+      (file) => onUploadedRef.current(file),
+    );
 
     uppy.on('file-added', (file) => {
       setRows((previous) => [
@@ -83,10 +87,11 @@ export function FileUploader({
       });
     });
 
+    // The created row is announced by `createUppy`'s own callback, which is the only
+    // place its id exists. This event just closes out the progress row.
     uppy.on('upload-success', (file) => {
       if (!file) return;
       updateRow(file.id, { state: 'completed', uploadedBytes: file.size ?? 0 });
-      onUploadedRef.current();
     });
 
     uppy.on('upload-error', (file, uploadError) => {

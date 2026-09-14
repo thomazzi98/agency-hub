@@ -24,6 +24,7 @@ import { commentRoutes } from './modules/comments/routes.js';
 import { topicRoutes } from './modules/topics/routes.js';
 import { calendarRoutes } from './modules/calendar/routes.js';
 import { publicationRoutes } from './modules/publications/routes.js';
+import { pendingRequestRoutes } from './modules/pending-requests/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -106,6 +107,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       await api.register(topicRoutes);
       await api.register(calendarRoutes);
       await api.register(publicationRoutes);
+      await api.register(pendingRequestRoutes);
     },
     { prefix: '/api' },
   );

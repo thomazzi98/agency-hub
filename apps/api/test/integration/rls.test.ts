@@ -87,6 +87,7 @@ const TENANT_TABLES = [
   'topic_replies',
   'content',
   'publications',
+  'pending_requests',
 ];
 
 describe('row-level security coverage', () => {

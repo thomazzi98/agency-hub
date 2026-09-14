@@ -685,20 +685,81 @@ so this is recorded as intended, not as a gap to close later.
 
 ---
 
+## Stage 10 - Pending requests (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage10_pending_requests` (+ `down.sql`): the `pending_requests` table
+  with its own `company_id` and the direct `tenant_isolation` policy, plus a partial
+  index on the unfinished statuses - which is the only set any screen opens on.
+- **[pending-requests](../apps/api/src/modules/pending-requests/routes.ts):** list with
+  the six server-resolved views, `GET /pending-requests/summary` for the dashboards,
+  detail, create, update, and `POST /:id/respond`.
+- **Frontend:** the **Pendências** list (opening on "esperando por mim"), the creation
+  dialog, and a detail page that combines the response box, the attachment and the
+  comment thread.
+
+### The last placeholder is closed
+
+`pending_request` was the only `commentable_type` with no table behind it. It now
+resolves like every other target, so the `unsupported_target` branch in
+[comments](../apps/api/src/modules/comments/routes.ts) is gone - the test that pinned it
+now asserts a plain 404 instead, and the error string was deleted from the client.
+
+**Every enum member in the codebase now has a table behind it.**
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| A response is a comment on the request, not a new kind of row | It is what [14-database-design.md](sdd/14-database-design.md) already provides for: `comments` carries `attachment_file_id`, and `pending_request` was already a `commentable_type`. A response file is linked to the request because the comment is. |
+| `POST /:id/respond` writes the comment and the status in one transaction | Two calls could leave a thread showing an answer the request itself had not registered. |
+| Only the addressed recipient moves it to `respondida` | Anyone in the company may comment, but a colleague adding a note has not answered the request. Checked against `responsible_user_id`, never against who happens to be typing. |
+| A closed request refuses new responses | `completed` and `cancelled` are decisions; letting a reply land after one would quietly reopen something that was closed on purpose. |
+| `client_manager` cannot open a request | The matrix marks it "🔶 (rare)" and the data model carries no override for it (23-open-questions.md #9), so the default applies - the same call the projects module already makes for the same marking. |
+| The recipient cannot `PATCH` the request | Rewriting or closing it is the creator's side of the conversation. The recipient's side is answering, which has its own endpoint and its own permission. |
+| `due_date` stays a `date`, and "atrasada" is computed against UTC midnight | "Entregar até quinta" has no time zone. Comparing a date column against an instant would make a request look late for some readers and not others. |
+
+### Changed while here
+
+`FileUploader` now hands back the file the server created (`{ id, originalName }`)
+rather than a bare "something finished" signal. The id only ever existed inside
+`completeMultipartUpload`, and attaching a file to a response needs exactly that id.
+The files screen ignores the argument, so nothing else changed.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build | `npm run lint`, `npm run typecheck`, `npm run build` | pass |
+| Pending requests | `apps/api/test/integration/pending-requests.test.ts` | 20 passed - the role matrix, the recipient-only status move, the attachment link read back through the comment thread, a closed request refusing a reply, every view, the aggregates, and a cross-tenant read byte-identical to a missing id |
+| Comments + RLS coverage | `comments-topics.test.ts`, `rls.test.ts` | 37 passed - including the flipped placeholder and `pending_requests` in the tenant-table list |
+| End-to-end (desktop + mobile) | `pending-requests.spec.ts`, `uploads.spec.ts` | 7 passed per project - the full request → mobile response with a file → agency closes it flow |
+
+### What is not done
+
+Nobody is *told* a request is waiting for them: the screens answer "o que estão
+esperando de mim?" only when someone opens them. That is Stage 11's job, and pending
+requests are on its event list.
+
+---
+
 ## Next step
 
-**Stage 10 - Pending requests**
-([roadmap](sdd/21-mvp-roadmap.md#stage-10--pending-requests)).
+**Stage 11 - Notifications (internal + push)**
+([roadmap](sdd/21-mvp-roadmap.md#stage-11--notifications-internal--push)).
 
-Concrete first action: add the `pending_requests` table in one migration (with
-`down.sql`), with its own `company_id` and the direct `tenant_isolation` policy, plus
-the status enum from [14-database-design.md](sdd/14-database-design.md)
-(`open|awaiting_client|answered|in_review|completed|cancelled`).
+Concrete first action: add `notifications`, `notification_preferences` and
+`push_devices` in one migration (with `down.sql`). Note the split from
+[14-database-design.md](sdd/14-database-design.md): `notifications` is tenant data with
+a **nullable** `company_id` and gets a `tenant_isolation` policy; the other two are
+per-user and global, so they are role-scoped in application code and belong in the
+`rls.test.ts` list's non-tenant side, not in `TENANT_TABLES`.
 
-Then close the **last placeholder** in the codebase: `pending_request` is currently the
-only unsupported `commentable_type` and the only unsupported deletion/comment target,
-pinned by a test in `comments-topics.test.ts` that will need to flip once the table
-exists. Responses reuse the comment infrastructure from Stage 7, with an optional
-attached file from Stage 6 - and the acceptance criterion is specifically that a
-recipient can respond **from a mobile viewport**, so that flow needs an E2E test in the
-mobile project, not only the desktop one.
+Then wire the event list from
+[08-notifications-and-push.md](sdd/08-notifications-and-push.md#events) into the places
+that already raise audit entries - the recipient resolution rules there are what decide
+who each event reaches, and they are per-company, so they must be resolved on the server
+inside the tenant scope.

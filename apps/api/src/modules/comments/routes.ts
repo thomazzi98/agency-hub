@@ -84,13 +84,14 @@ async function resolveCommentable(
       if (!content) throw notFound('not_found', 'Conteúdo não encontrado.');
       return content;
     }
-    default:
-      // `pending_request` arrives with Stage 10. The enum value and everything around
-      // it already exist, so that stage only resolves the target.
-      throw unprocessable(
-        'unsupported_target',
-        'Ainda não é possível comentar neste tipo de item.',
-      );
+    case 'pending_request': {
+      const pendingRequest = await tx.pendingRequest.findFirst({
+        where: { id, ...scope },
+        select: { companyId: true },
+      });
+      if (!pendingRequest) throw notFound('not_found', 'Pendência não encontrada.');
+      return pendingRequest;
+    }
   }
 }
 
