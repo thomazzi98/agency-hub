@@ -6,7 +6,7 @@ A multi-tenant, mobile-first web platform that centralizes a social media, conte
 
 ## Status
 
-**Stage 0: project scaffolding.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. The repository currently contains only the scaffolding described below — no business features yet. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time.
+**Stage 1 complete: database schema and migrations baseline.** The complete technical and product specification — written before implementation, per Spec-Driven Development — lives in [`docs/`](docs/README.md), derived from the original product requirements in [`documentation.md`](documentation.md) (Portuguese); see [docs/sdd/23-open-questions.md](docs/sdd/23-open-questions.md) for resolved ambiguities and what's still open. Implementation proceeds per [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one stage at a time; running progress and the next concrete step are tracked in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Local development
 
@@ -16,8 +16,11 @@ Requires Node.js 22.12+ (see `.nvmrc`) and Docker.
 npm install
 cp .env.example .env
 
-# Start PostgreSQL (the API doesn't use it yet — provisioned ahead of Stage 1)
+# Start PostgreSQL
 docker compose up -d postgres
+
+# Apply migrations
+npm run db:migrate:deploy --workspace=@agency-hub/api
 
 # Backend (http://localhost:3000/health)
 npm run dev --workspace=@agency-hub/api
@@ -26,7 +29,35 @@ npm run dev --workspace=@agency-hub/api
 npm run dev --workspace=@agency-hub/web
 ```
 
-Common workspace-wide commands: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
+Or run the whole backend stack in containers — this also applies migrations:
+
+```bash
+docker compose up -d --build
+curl http://localhost:3000/health/ready
+```
+
+Common workspace-wide commands: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run format`.
+
+### Database
+
+Migrations live in `apps/api/prisma/migrations/`. Each directory holds Prisma's generated `migration.sql` **and** a hand-reviewed `down.sql`, because Prisma Migrate has no native rollback and [docs/sdd/19-deployment-and-cicd.md](docs/sdd/19-deployment-and-cicd.md) requires every migration to be reversible.
+
+```bash
+cd apps/api
+npm run db:migrate            # create + apply a migration in development
+npm run db:migrate:deploy     # apply pending migrations (CI/production)
+npm run db:migrate:down       # roll back the most recent migration
+npm run db:studio             # browse data
+```
+
+### Tests
+
+Integration tests need a running PostgreSQL. They drop and recreate the database named by `TEST_DATABASE_URL` on every run — the tooling refuses any database whose name does not contain `_test`.
+
+```bash
+docker compose up -d postgres
+npm test
+```
 
 ## Documentation
 
@@ -57,4 +88,4 @@ Common workspace-wide commands: `npm run lint`, `npm run typecheck`, `npm test`,
 
 ## Next step
 
-Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time, starting with project scaffolding (Stage 0) and the auth/tenant-isolation foundation (Stages 1–3) before any user-facing module is built.
+Implementation follows the staged roadmap in [docs/sdd/21-mvp-roadmap.md](docs/sdd/21-mvp-roadmap.md), one small, independently reviewable stage at a time. Stages 0–1 (scaffolding, schema baseline) are done; Stage 2 (authentication and sessions) is next. See [docs/PROGRESS.md](docs/PROGRESS.md).

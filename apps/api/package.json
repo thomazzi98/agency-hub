@@ -6,18 +6,29 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.typecheck.json",
-    "test": "vitest run"
+    "typecheck": "prisma generate && tsc -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:down": "node scripts/migrate-down.mjs",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^16.6.1",
     "fastify": "^5.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.16.0",
     "vitest": "^5.0.0"
   }
