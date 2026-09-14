@@ -910,22 +910,91 @@ the files screen now has two headings containing "Arquivos". Nav locators are ex
 
 ---
 
+## Stage 13 - Campaign management (done)
+
+**Status:** complete, validated 2026-09-14.
+
+### Delivered
+
+- **Migration** `stage13_campaigns` (+ `down.sql`): `ad_accounts`, `campaigns` and
+  `campaign_history`, the last reaching a company through its campaign the way
+  `publications` reach one through their content.
+- **[campaigns](../apps/api/src/modules/campaigns/routes.ts):** ad accounts and
+  campaigns, list with filters, detail with its timeline, and field-level history on
+  every edit.
+- **`can_manage_campaigns` finally decides something.** The override has existed on
+  `CompanyMembership` since Stage 3 and `canManageCampaigns()` has been in
+  [permissions.ts](../apps/api/src/shared/permissions.ts) just as long, with nothing
+  calling it. It is now the gate on every create and edit - and it is per-membership,
+  so the same manager can have it for one client and not another. There is a test for
+  exactly that.
+- **The two placeholders Stage 12 left at zero are filled in:** the agency dashboard's
+  `campaignsNeedingAttention` and the company dashboard's `campaigns`, the latter
+  counting only what the agency marked visible.
+- **Both campaign events** in [the notification catalog](../apps/api/src/modules/notifications/catalog.ts)
+  now fire. `campaign.needs_attention` is separate from a routine status change because
+  it is the one somebody has to act on - and it defaults to a push while the other
+  does not.
+- **Frontend:** the campaigns list, the ad-account and campaign dialogs, and a detail
+  page whose history reads "Situação, de Ativa para Com problema", with the reason
+  underneath.
+
+### The history is append-only in the database, not by convention
+
+`campaign_history` gets a `SELECT` policy and an `INSERT` policy and **no others**, so
+PostgreSQL itself refuses an `UPDATE` or a `DELETE` - the same treatment `audit_logs`
+gets. A test proves it: `updateMany` and `deleteMany` through a normal tenant scope
+both affect zero rows and the row is still intact afterwards. This is the accountability
+record the module exists for; leaving it rewritable would have undercut the point.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| A history row only for a field that actually changed | "Exactly one history row per field edit" (21-mvp-roadmap.md). Resubmitting a form writes nothing for the fields nobody touched, so the timeline stays readable. |
+| `platform` follows the ad account and is never accepted from the client | It is denormalised for convenience; letting it be set independently would let it disagree with the account it came from. Moving an account's platform updates its campaigns in the same transaction. |
+| Money is `numeric(14,2)` and reaches the browser as a string | A reported figure must come back exactly as it was typed. Parsing it into a float to render it is the one place it could quietly change. |
+| The "informado manualmente" notice is on the list, both dialogs and the detail | 09-campaign-management.md calls it a display requirement, not a data one: nobody should mistake a typed number for a live metric. Each money field is labelled individually too. |
+| Hidden campaigns are excluded by the `where`, not filtered afterwards | A campaign the agency marked internal is never sent to a client's browser at all. |
+| No delete endpoint | `ended` and `cancelled` exist; removing a campaign would take its history with it, and the history is the point. |
+
+### E2E fixtures
+
+The campaign suite has to give a manager a company to exercise the override, which
+would have broken the "manager with no company" case that `projects-folders.spec.ts`
+relies on. A separate `e2e-gestor-campanhas-*` fixture keeps both true - the seed file
+already carried that reasoning for the collaborator account, and now says it for this
+one too. Two E2E sign-out races were fixed while here, the same "wait for the sign-in
+screen before signing in again" as in Stage 11.
+
+### Validated 2026-09-14
+
+| Check | Command | Result |
+|---|---|---|
+| Lint / typecheck / build / format | `npm run lint`, `npm run typecheck`, `npm run build`, `npm run format:check` | pass |
+| Unit + integration | `npm test` | 346 passed / 21 files |
+| Campaigns | `apps/api/test/integration/campaigns.test.ts` | 20 passed - the override including the per-membership case, one history row per changed field and none for unchanged ones, the database refusing to rewrite history, client visibility, and a foreign campaign answered byte-identically to one that never existed |
+| End-to-end (desktop + mobile) | `npm run test:e2e` | 82 passed |
+
+---
+
 ## Next step
 
-**Stage 13 - Campaign management**
-([roadmap](sdd/21-mvp-roadmap.md#stage-13--campaign-management)).
+**Stage 14 - Manual database backup**
+([roadmap](sdd/21-mvp-roadmap.md#stage-14--manual-database-backup)).
 
-Concrete first action: add `ad_accounts`, `campaigns` and `campaign_history` in one
-migration (with `down.sql`), all three tenant-scoped - `campaign_history` through its
-campaign, the way `publications` reaches a company through its content.
+Concrete first action: read [11-backup-and-recovery.md](sdd/11-backup-and-recovery.md)
+in full, then add `backup_jobs` in one migration (with `down.sql`). It is the one table
+in [14-database-design.md](sdd/14-database-design.md) that is **global and
+`agency_admin`-only** rather than tenant-scoped - a backup is whole-database, so it is
+gated by role in application code and gets no `tenant_isolation` policy. Add it to
+neither list in `rls.test.ts` without saying why.
 
-The permission to watch is `can_manage_campaigns`: it already exists on
-`CompanyMembership` and `canManageCampaigns()` in
-[permissions.ts](../apps/api/src/shared/permissions.ts) already reads it, but nothing
-calls it yet. This is the stage where that override finally does something, and it is
-per-membership - the same manager may have it for one client and not another.
+The part to get right first is the step-up reauthentication from
+[ADR-0010](decisions/0010-reauthentication.md): triggering a backup requires it
+*regardless of role*, and `auth.reauthenticated` / `auth.reauthentication_failed`
+already exist in the audit catalogue, unused, waiting for exactly this.
 
-Then fill in the two placeholders this stage left at zero: the agency dashboard's
-`campaignsNeedingAttention` and the company dashboard's `campaigns`, plus the two
-campaign events already declared in
-[the notification catalog](../apps/api/src/modules/notifications/catalog.ts).
+Then: one job in flight at a time, `pg_dump` in the worker (which already has the owner
+credentials the app role deliberately lacks), and a download that streams through the
+API rather than exposing a path.

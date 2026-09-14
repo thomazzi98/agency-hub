@@ -1,5 +1,6 @@
 import type { PublicationStatus } from '../modules/publications/api';
 import type { PendingRequest } from '../modules/pending-requests/api';
+import type { CampaignStatus } from '../modules/campaigns/api';
 
 /**
  * One visual treatment per status, defined once and reused everywhere that status
@@ -45,4 +46,24 @@ export function pendingRequestTone(item: PendingRequest): BadgeTone {
   if (item.isOverdue) return 'danger';
   if (item.isAwaitingRecipient) return 'warning';
   return 'neutral';
+}
+
+/**
+ * Red for the three statuses a human set to say "look at this", green while it is
+ * running, grey once it is over (09-campaign-management.md).
+ */
+export function campaignTone(status: CampaignStatus): BadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'with_problem':
+    case 'needs_attention':
+      return 'danger';
+    case 'awaiting_approval':
+      return 'warning';
+    case 'ended':
+      return 'muted';
+    default:
+      return 'neutral';
+  }
 }

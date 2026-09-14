@@ -63,6 +63,8 @@ test.describe('follow-up topics', () => {
     await expect(page.getByRole('link', { name: subject })).toBeVisible();
 
     await page.getByRole('button', { name: 'Sair' }).click();
+    // Logging out is a round trip then a redirect; signing in before it lands races it.
+    await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
     await signIn(page, contributor.email);
 
     await page.getByRole('link', { name: 'Acompanhamentos', exact: true }).click();
@@ -81,6 +83,7 @@ test.describe('follow-up topics', () => {
     await expect(page.getByRole('button', { name: 'Marcar como resolvido' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Sair' }).click();
+    await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
     await signIn(page, adminUser.email);
 
     await page.getByRole('link', { name: 'Acompanhamentos', exact: true }).click();

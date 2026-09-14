@@ -13,6 +13,7 @@ import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 import { OVERDUE_STATUSES } from '../calendar/content.js';
 import { AWAITING_RECIPIENT_STATUSES, UNFINISHED_STATUSES } from '../pending-requests/status.js';
 import { PENDING_STATUSES } from '../publications/publication.js';
+import { CAMPAIGN_ATTENTION_STATUSES } from '../campaigns/campaign.js';
 
 /**
  * Read-only aggregation over the modules that own the data
@@ -198,6 +199,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         pendingPublications,
         unreadNotifications,
         activity,
+        campaignsNeedingAttention,
       ] = await Promise.all([
         tx.company.count({
           where: {
@@ -257,6 +259,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         isAgencyAdmin(actor)
           ? recentActivity(tx, companyIds, filters.companyId)
           : Promise.resolve(null),
+        tx.campaign.count({
+          where: {
+            AND: [
+              scopeOf(filters, companyIds),
+              { status: { in: CAMPAIGN_ATTENTION_STATUSES } },
+              filters.responsibleUserId ? { responsibleUserId: filters.responsibleUserId } : {},
+            ],
+          },
+        }),
       ]);
 
       return {
@@ -273,9 +284,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
             requestsAwaitingClient,
             requestsOverdue: requestsOverdue.length,
             pendingPublications,
-            // Stage 13 fills this in; declared now so the panel exists from the start
-            // rather than appearing later and moving everything around.
-            campaignsNeedingAttention: 0,
+            campaignsNeedingAttention,
             unreadNotifications,
           },
           requestsOverdueItems: requestsOverdue,
@@ -309,6 +318,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         activeProjects,
         pendingPublications,
         unreadNotifications,
+        campaigns,
       ] = await Promise.all([
         tx.content.count({
           where: { ...companyScope, deletedAt: null, productionStatus: 'planned' },
@@ -356,6 +366,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         tx.notification.count({
           where: { recipientId: actor.userId, readAt: null, companyId: query.companyId },
         }),
+        // The client only counts what the agency chose to show them.
+        tx.campaign.count({
+          where: {
+            ...companyScope,
+            ...(actor.role === 'agency_admin' || actor.role === 'agency_manager'
+              ? {}
+              : { visibleToClient: true }),
+          },
+        }),
       ]);
 
       return {
@@ -368,7 +387,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
             activeProjects,
             pendingPublications,
             unreadNotifications,
-            campaigns: 0,
+            campaigns,
           },
           upcomingContent,
           recentFiles,

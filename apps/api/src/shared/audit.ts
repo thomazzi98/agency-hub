@@ -78,6 +78,13 @@ export const AuditAction = {
   DeletionApproved: 'deletion_request.approved',
   DeletionRejected: 'deletion_request.rejected',
 
+  AdAccountCreated: 'ad_account.created',
+  AdAccountUpdated: 'ad_account.updated',
+
+  CampaignCreated: 'campaign.created',
+  CampaignUpdated: 'campaign.updated',
+  CampaignStatusChanged: 'campaign.status_changed',
+
   CrossTenantAccessDenied: 'security.cross_tenant_access_denied',
 } as const;
 

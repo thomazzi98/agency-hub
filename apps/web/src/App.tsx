@@ -18,6 +18,8 @@ import CalendarPage from './pages/CalendarPage';
 import PublicationsPage from './pages/PublicationsPage';
 import PendingRequestsPage from './pages/PendingRequestsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import CampaignsPage from './pages/CampaignsPage';
+import CampaignDetailPage from './pages/CampaignDetailPage';
 import PendingRequestDetailPage from './pages/PendingRequestDetailPage';
 import TopicsPage from './pages/TopicsPage';
 import TopicDetailPage from './pages/TopicDetailPage';
@@ -153,6 +155,28 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <PublicationsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/campanhas"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <CampaignsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/campanhas/:id"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <CampaignDetailPage />
                   </AppShell>
                 </ProtectedRoute>
               }

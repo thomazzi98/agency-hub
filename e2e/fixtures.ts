@@ -23,6 +23,18 @@ export function manager(testInfo: TestInfo): FixtureUser {
   return { email: `e2e-gestor-${project}@example.com`, name: `Gestor ${project}` };
 }
 
+/**
+ * A manager who is *given* a company, unlike `manager()` — which several specs rely on
+ * having none at all. Kept apart so one suite cannot quietly break the other.
+ */
+export function campaignManager(testInfo: TestInfo): FixtureUser {
+  const project = testInfo.project.name;
+  return {
+    email: `e2e-gestor-campanhas-${project}@example.com`,
+    name: `Gestor campanhas ${project}`,
+  };
+}
+
 /** A contributor, so a file uploaded by someone else is not theirs to delete. */
 export function collaborator(testInfo: TestInfo): FixtureUser {
   const project = testInfo.project.name;

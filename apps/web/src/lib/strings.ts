@@ -424,6 +424,77 @@ export const strings = {
     remove: 'Excluir',
     confirmRemove: 'Excluir esta nota?',
   },
+  campaigns: {
+    title: 'Campanhas',
+    new: 'Nova campanha',
+    edit: 'Editar campanha',
+    name: 'Nome',
+    objective: 'Objetivo',
+    status: 'Situação',
+    platform: 'Plataforma',
+    adAccount: 'Conta de anúncios',
+    newAdAccount: 'Nova conta de anúncios',
+    externalAccountId: 'ID da conta na plataforma',
+    externalHint: 'Como está na plataforma. Não conferimos com o anunciante.',
+    dailyBudget: 'Orçamento diário',
+    totalBudget: 'Orçamento total',
+    reportedSpend: 'Investimento informado',
+    reportedBalance: 'Saldo informado',
+    lastCheckedAt: 'Conferido em',
+    responsible: 'Responsável',
+    notes: 'Observações',
+    visibleToClient: 'Visível para o cliente',
+    visibleHint: 'Desmarque para manter esta campanha só com a equipe da agência.',
+    hidden: 'Interna',
+    create: 'Criar campanha',
+    createAccount: 'Criar conta',
+    changeNote: 'Motivo da alteração',
+    changeNoteHint: 'Fica registrado no histórico junto com o que mudou.',
+    saved: 'Campanha atualizada.',
+    created: 'Campanha criada.',
+    accountCreated: 'Conta de anúncios criada.',
+    history: 'Histórico de alterações',
+    historyEmpty: 'Nenhuma alteração registrada ainda.',
+    from: 'de',
+    to: 'para',
+    empty: 'Nenhuma campanha cadastrada.',
+    emptyHint: 'Cadastre a primeira conta de anúncios para começar.',
+    noAccounts: 'Cadastre uma conta de anúncios antes de criar campanhas.',
+    needsAttentionOnly: 'Somente as que precisam de atenção',
+    /** The spec requires this on screen, not only in the data model. */
+    manualNotice:
+      'Investimento, saldo e orçamentos são informados manualmente pela equipe. O sistema não lê dados das plataformas de anúncios.',
+    manualTag: 'informado manualmente',
+    backToList: 'Voltar para campanhas',
+    noValue: '—',
+  },
+  campaignStatuses: {
+    active: 'Ativa',
+    paused: 'Pausada',
+    ended: 'Encerrada',
+    with_problem: 'Com problema',
+    awaiting_approval: 'Aguardando aprovação',
+    needs_attention: 'Precisa de atenção',
+  },
+  adPlatforms: {
+    meta: 'Meta Ads',
+    tiktok: 'TikTok Ads',
+  },
+  campaignFields: {
+    name: 'Nome',
+    objective: 'Objetivo',
+    status: 'Situação',
+    adAccountId: 'Conta de anúncios',
+    platform: 'Plataforma',
+    dailyBudget: 'Orçamento diário',
+    totalBudget: 'Orçamento total',
+    reportedSpend: 'Investimento informado',
+    reportedBalance: 'Saldo informado',
+    lastCheckedAt: 'Conferido em',
+    visibleToClient: 'Visibilidade para o cliente',
+    responsibleUserId: 'Responsável',
+    notes: 'Observações',
+  },
   notifications: {
     title: 'Notificações',
     open: 'Abrir notificações',
@@ -453,6 +524,11 @@ export const strings = {
     saved: 'Preferência salva.',
   },
   auditActions: {
+    'ad_account.created': 'Conta de anúncios criada',
+    'ad_account.updated': 'Conta de anúncios atualizada',
+    'campaign.created': 'Campanha criada',
+    'campaign.updated': 'Campanha atualizada',
+    'campaign.status_changed': 'Situação de campanha alterada',
     'auth.login_succeeded': 'Entrou no sistema',
     'auth.login_failed': 'Falha ao entrar',
     'auth.login_blocked': 'Tentativa de acesso bloqueada',
@@ -728,6 +804,9 @@ export const strings = {
     cannot_deactivate_self: 'Você não pode desativar a sua própria conta.',
     not_planned_with_details: 'Uma rede marcada como "não planejada" não pode ter data nem link.',
     request_closed: 'Esta pendência já foi encerrada.',
+    campaign_management_not_granted:
+      'Você não tem permissão para gerenciar campanhas desta empresa.',
+    unknown_ad_account: 'Conta de anúncios não encontrada nesta empresa.',
     internal_error: 'Erro interno. Tente novamente.',
     network_error: 'Não foi possível falar com o servidor. Verifique sua conexão.',
   } as Record<string, string>,
@@ -774,6 +853,18 @@ export function publicationStatusLabel(status: string): string {
 }
 
 /** The audit log is shown to admins on the dashboard, so its codes need copy too. */
+export function campaignStatusLabel(status: string): string {
+  return (strings.campaignStatuses as Record<string, string>)[status] ?? status;
+}
+
+export function adPlatformLabel(platform: string): string {
+  return (strings.adPlatforms as Record<string, string>)[platform] ?? platform;
+}
+
+export function campaignFieldLabel(field: string): string {
+  return (strings.campaignFields as Record<string, string>)[field] ?? field;
+}
+
 export function auditActionLabel(action: string): string {
   return (strings.auditActions as Record<string, string>)[action] ?? action;
 }

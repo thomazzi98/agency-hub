@@ -315,3 +315,38 @@ export async function notifyDeletionReviewed(
     relatedId: input.requestId,
   });
 }
+
+export async function notifyCampaignStatusChanged(
+  tx: ScopedDb,
+  input: { companyId: string; actorId: string; campaignId: string; name: string; status: string },
+): Promise<void> {
+  await notify(tx, await companyAudience(tx, input.companyId, { exclude: input.actorId }), {
+    companyId: input.companyId,
+    type: NotificationType.CampaignStatusChanged,
+    title: 'Campanha atualizada',
+    message: `"${truncate(input.name)}" agora está como ${input.status}.`,
+    actorId: input.actorId,
+    relatedType: 'campaign',
+    relatedId: input.campaignId,
+  });
+}
+
+/**
+ * Deliberately its own event: "precisa de atenção" is the one campaign signal somebody
+ * has to act on, and it defaults to a push while a routine status change does not
+ * (08-notifications-and-push.md#preferences).
+ */
+export async function notifyCampaignNeedsAttention(
+  tx: ScopedDb,
+  input: { companyId: string; actorId: string; campaignId: string; name: string; status: string },
+): Promise<void> {
+  await notify(tx, await companyAudience(tx, input.companyId, { exclude: input.actorId }), {
+    companyId: input.companyId,
+    type: NotificationType.CampaignNeedsAttention,
+    title: 'Campanha precisa de atenção',
+    message: `"${truncate(input.name)}" está como ${input.status}.`,
+    actorId: input.actorId,
+    relatedType: 'campaign',
+    relatedId: input.campaignId,
+  });
+}

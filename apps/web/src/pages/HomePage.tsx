@@ -177,6 +177,8 @@ function AgencyDashboard({ currentUser }: { currentUser: { name: string } }) {
             <StatTile
               label={strings.dashboard.campaigns}
               value={dashboard.data.counts.campaignsNeedingAttention}
+              tone="danger"
+              to="/campanhas"
             />
             <StatTile
               label={strings.dashboard.unread}
@@ -301,6 +303,7 @@ function CompanyDashboard({
           value={counts.pendingPublications}
           to="/publicacoes"
         />
+        <StatTile label={strings.campaigns.title} value={counts.campaigns} to="/campanhas" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

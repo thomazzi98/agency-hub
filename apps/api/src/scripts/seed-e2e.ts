@@ -44,6 +44,15 @@ try {
       mustChangePassword: false,
     },
     {
+      // The campaign suite has to give a manager a company to test the
+      // `can_manage_campaigns` override, which would otherwise break the
+      // "manager with no company" case above the moment it ran.
+      email: `e2e-gestor-campanhas-${project}@example.com`,
+      name: `Gestor campanhas ${project}`,
+      role: 'agency_manager' as const,
+      mustChangePassword: false,
+    },
+    {
       // Used by the deletion-request flow, which needs someone who is *not* the
       // uploader. Kept separate so granting it a company cannot disturb the
       // "manager with no company" cases.

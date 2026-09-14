@@ -89,6 +89,9 @@ const TENANT_TABLES = [
   'publications',
   'pending_requests',
   'notifications',
+  'ad_accounts',
+  'campaigns',
+  'campaign_history',
 ];
 
 /**
