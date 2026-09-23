@@ -19,6 +19,7 @@ import {
   sortSchema,
 } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
+import { businessDayBounds, isSameBusinessDay } from '../../shared/business-day.js';
 import { assertResponsibleHasAccess } from '../../shared/references.js';
 import { notifyContentStatusChanged } from '../notifications/events.js';
 import { PENDING_STATUSES, publicationSelect } from '../publications/publication.js';
@@ -90,14 +91,11 @@ type ContentRow = {
  */
 function withFlags(row: ContentRow, now: Date) {
   const scheduled = row.scheduledAt;
-  const isToday =
-    scheduled.getUTCFullYear() === now.getUTCFullYear() &&
-    scheduled.getUTCMonth() === now.getUTCMonth() &&
-    scheduled.getUTCDate() === now.getUTCDate();
 
   return {
     ...row,
-    isToday,
+    // The agency's day, not UTC's: 22:00 in São Paulo is already tomorrow in UTC.
+    isToday: isSameBusinessDay(scheduled, now),
     isOverdue: scheduled < now && OVERDUE_STATUSES.includes(row.productionStatus),
     // Waiting on the client to send something is the one blocked state the agency
     // cannot clear on its own.
@@ -227,10 +225,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       if (query.companyId) requireCompanyAccess(actor, query.companyId);
 
       const now = new Date();
-      const startOfToday = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-      );
-      const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+      const { startOfToday, startOfTomorrow } = businessDayBounds(now);
 
       const flagFilter: Prisma.ContentWhereInput =
         query.flag === 'today'
@@ -262,7 +257,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         tx.content.findMany({
           where,
           select: contentSelect,
-          orderBy: { [query.sort]: query.order },
+          orderBy: [{ [query.sort]: query.order }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.content.count({ where }),

@@ -29,11 +29,13 @@ describe('environment configuration', () => {
       VAPID_SUBJECT: '',
       CORS_ORIGIN: '',
       DB_OWNER_PASSWORD: '',
+      APP_TIMEZONE: '',
     });
 
     expect(env.backupEncryptionKey).toBeNull();
     expect(env.pushEnabled).toBe(false);
     expect(env.corsOrigins).toEqual([]);
+    expect(env.APP_TIMEZONE).toBe('America/Sao_Paulo');
   });
 
   it('turns a 64-hex backup key into 32 bytes and refuses anything else', () => {

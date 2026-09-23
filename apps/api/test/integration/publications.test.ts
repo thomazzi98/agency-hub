@@ -213,6 +213,19 @@ describe('registering a publication', () => {
     expect(response.json().error.code).toBe('validation_error');
   });
 
+  it('refuses a link that is a URL but not a web address', async () => {
+    const cookie = await sessionFor(world.managerA);
+
+    // Rendered as an <a href> for everyone in the company - and a valid URL all the same.
+    const response = await register(cookie, world.contentA.id, 'instagram', {
+      status: 'published',
+      link: 'javascript:alert(document.cookie)',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.details[0].field).toBe('link');
+  });
+
   it('refuses an unknown network', async () => {
     const cookie = await sessionFor(world.managerA);
 

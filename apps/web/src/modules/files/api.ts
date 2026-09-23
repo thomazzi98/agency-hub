@@ -40,6 +40,17 @@ export interface DeletionRequest {
   createdAt: string;
 }
 
+/** A request as the review queue lists it: with what it is about, and who is involved. */
+export interface DeletionRequestListItem extends DeletionRequest {
+  company: { name: string };
+  requestedBy: { name: string } | null;
+  reviewedBy: { name: string } | null;
+  /** The file's name or the content's title; null when the item no longer exists. */
+  targetLabel: string | null;
+  /** Already gone - its uploader removed it while the request waited, or approved. */
+  targetRemoved: boolean;
+}
+
 const filesKey = ['files'] as const;
 const deletionRequestsKey = ['deletion-requests'] as const;
 const emptyMeta: PageMeta = { page: 1, pageSize: 20, total: 0 };
@@ -89,6 +100,18 @@ export async function fetchDownloadUrl(id: string): Promise<string> {
   return result.url;
 }
 
+/**
+ * Downloads one file. The signed URL is navigated to rather than opened in a new
+ * window: it answers with `Content-Disposition: attachment`, so the browser saves the
+ * file and the page stays where it is - while a window opened after an await is exactly
+ * what a phone's pop-up blocker swallows without a word. Either way the bytes come
+ * straight from storage, never through this application. Rejects, for the caller to
+ * show, when the link cannot be had.
+ */
+export async function startDownload(id: string): Promise<void> {
+  window.location.assign(await fetchDownloadUrl(id));
+}
+
 export function useRequestDeletion() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -101,12 +124,15 @@ export function useRequestDeletion() {
   });
 }
 
-export function useDeletionRequests(status: 'pending' | 'approved' | 'rejected' | 'all') {
+export function useDeletionRequests(
+  status: 'pending' | 'approved' | 'rejected' | 'all',
+  page: number,
+) {
   return useQuery({
-    queryKey: [...deletionRequestsKey, status],
+    queryKey: [...deletionRequestsKey, status, page],
     queryFn: async () => {
-      const envelope = await apiEnvelope<DeletionRequest[]>(
-        `/deletion-requests${queryString({ status, page: 1 })}`,
+      const envelope = await apiEnvelope<DeletionRequestListItem[]>(
+        `/deletion-requests${queryString({ status, page })}`,
       );
       return { rows: envelope.data, meta: envelope.meta ?? emptyMeta };
     },

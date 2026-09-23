@@ -10,6 +10,13 @@ export const DISPATCH_PUSH_NOTIFICATIONS_JOB = 'dispatch-push-notifications';
 const BATCH_SIZE = 200;
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * How old a notification can be and still be worth a push. Push only decides how soon a
+ * phone buzzes; past this the centre already has it, and buzzing about something from
+ * yesterday - after a worker restart, or a device registered today - helps nobody.
+ */
+const PUSH_HORIZON_MS = HOUR_MS;
+
 export interface PushDispatchResult {
   considered: number;
   sent: number;
@@ -64,11 +71,19 @@ export async function dispatchPushNotifications(
   // Every read here crosses recipients, so it runs under the system scope — the same
   // reason the cleanup job does. No tenant data is exposed: the payload is built from
   // the notification row itself, which was already scoped when it was created.
+  //
+  // A row this sweep decides not to push is not marked, so it comes back next minute.
+  // Unbounded, the rows that can never be pushed - most people never register a
+  // device, and most event types default to in-app only - piled up at the head of an
+  // oldest-first batch until they filled all of it, and push stopped for everyone.
+  // Hence: recent rows only, only for people with a device to push to, newest first.
   const pending = await withSystemScope(prisma, (tx) =>
     tx.notification.findMany({
       where: {
         readAt: null,
+        createdAt: { gte: new Date(now.getTime() - PUSH_HORIZON_MS) },
         OR: [{ pushSentAt: null }, { pushSentAt: { lt: prisma.notification.fields.createdAt } }],
+        recipient: { pushDevices: { some: { enabled: true, revokedAt: null } } },
       },
       select: {
         id: true,
@@ -80,7 +95,7 @@ export async function dispatchPushNotifications(
         relatedType: true,
         relatedId: true,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: BATCH_SIZE,
     }),
   );

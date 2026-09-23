@@ -453,6 +453,61 @@ describe('folder management', () => {
     expect(response.json().error.code).toBe('folder_not_empty');
   });
 
+  it('refuses a folder that still holds files, with the same answer as for subfolders', async () => {
+    const cookie = await sessionFor(world.managerA);
+    const folder = await seedFolder(world.companyA.id, 'Com arquivos', world.managerA.id);
+    await withSystemScope(prisma, (tx) =>
+      tx.file.create({
+        data: {
+          companyId: world.companyA.id,
+          folderId: folder.id,
+          originalName: 'foto.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: BigInt(1024),
+          storageKey: `${world.companyA.id}/no-project/${crypto.randomUUID()}/foto.jpg`,
+        },
+      }),
+    );
+
+    const response = await app.inject(
+      authed({ method: 'DELETE', url: `/api/folders/${folder.id}` }, cookie),
+    );
+
+    // Not the foreign key's internal error.
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('folder_not_empty');
+  });
+
+  it('deletes a folder whose files were all removed, keeping their records', async () => {
+    const cookie = await sessionFor(world.managerA);
+    const folder = await seedFolder(world.companyA.id, 'Esvaziada', world.managerA.id);
+    const removed = await withSystemScope(prisma, (tx) =>
+      tx.file.create({
+        data: {
+          companyId: world.companyA.id,
+          folderId: folder.id,
+          originalName: 'antiga.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: BigInt(1024),
+          storageKey: `${world.companyA.id}/no-project/${crypto.randomUUID()}/antiga.jpg`,
+          deletedAt: new Date(),
+        },
+      }),
+    );
+
+    const response = await app.inject(
+      authed({ method: 'DELETE', url: `/api/folders/${folder.id}` }, cookie),
+    );
+
+    // It looks empty, so it can go - it used to be undeletable forever.
+    expect(response.statusCode).toBe(200);
+    const kept = await withSystemScope(prisma, (tx) =>
+      tx.file.findUniqueOrThrow({ where: { id: removed.id } }),
+    );
+    expect(kept.deletedAt).not.toBeNull();
+    expect(kept.folderId).toBeNull();
+  });
+
   it('lets a contributor delete only their own folder', async () => {
     const cookie = await sessionFor(world.contributorA);
     const own = await seedFolder(world.companyA.id, 'Minha', world.contributorA.id);

@@ -284,6 +284,8 @@ describe('change history', () => {
 
     expect(response.json().data.history).toHaveLength(1);
     expect(response.json().data.history[0].fieldName).toBe('status');
+    // Who changed it, not only an id: accountability is what the history is for.
+    expect(response.json().data.history[0].changedBy).toEqual({ name: world.managerA.name });
   });
 
   it('cannot be rewritten, because the database has no policy that would allow it', async () => {
@@ -359,6 +361,82 @@ describe('visibility to clients', () => {
     const list = await app.inject(authed({ method: 'GET', url: '/api/campaigns' }, managerCookie));
 
     expect(list.json().meta.total).toBe(1);
+  });
+
+  // 06-permissions-and-authorization.md: "Campaigns — view" is ❌ for a contributor.
+  it('shows a contributor no campaign at all, visible to the client or not', async () => {
+    const managerCookie = await sessionFor(world.managerA);
+    const visible = await createCampaign(managerCookie, { name: 'Visível' });
+
+    const contributorCookie = await sessionFor(world.contributorA);
+    const [list, detail, accounts] = await Promise.all([
+      app.inject(authed({ method: 'GET', url: '/api/campaigns' }, contributorCookie)),
+      app.inject(
+        authed(
+          { method: 'GET', url: `/api/campaigns/${visible.json().data.id}` },
+          contributorCookie,
+        ),
+      ),
+      app.inject(authed({ method: 'GET', url: '/api/ad-accounts' }, contributorCookie)),
+    ]);
+
+    expect(list.json().data).toEqual([]);
+    expect(list.json().meta.total).toBe(0);
+    expect(detail.statusCode).toBe(404);
+    expect(accounts.json().data).toEqual([]);
+  });
+
+  it('tells nobody outside the agency about a hidden campaign, and never a contributor', async () => {
+    const managerCookie = await sessionFor(world.managerA);
+    const hidden = await createCampaign(managerCookie, { name: 'Interna', visibleToClient: false });
+    const visible = await createCampaign(managerCookie, { name: 'Visível' });
+
+    for (const created of [hidden, visible]) {
+      await app.inject(
+        authed(
+          {
+            method: 'PATCH',
+            url: `/api/campaigns/${created.json().data.id}`,
+            payload: { status: 'paused' },
+          },
+          managerCookie,
+        ),
+      );
+    }
+
+    const notified = async (user: User) =>
+      systemRead((tx) =>
+        tx.notification.findMany({ where: { recipientId: user.id }, select: { relatedId: true } }),
+      );
+
+    // The client hears about the campaign it can open, and only that one.
+    expect((await notified(world.clientA)).map((row) => row.relatedId)).toEqual([
+      visible.json().data.id,
+    ]);
+    expect(await notified(world.contributorA)).toEqual([]);
+    // The agency hears about both.
+    expect(await notified(world.admin)).toHaveLength(2);
+  });
+
+  it('words the notification in Portuguese, not in status codes', async () => {
+    const managerCookie = await sessionFor(world.managerA);
+    const created = await createCampaign(managerCookie, { name: 'Lançamento' });
+
+    await app.inject(
+      authed(
+        {
+          method: 'PATCH',
+          url: `/api/campaigns/${created.json().data.id}`,
+          payload: { status: 'needs_attention' },
+        },
+        managerCookie,
+      ),
+    );
+
+    const notification = await systemRead((tx) =>
+      tx.notification.findFirstOrThrow({ where: { recipientId: world.clientA.id } }),
+    );
+    expect(notification.message).toBe('"Lançamento" está como Precisa de atenção.');
   });
 });
 
@@ -513,5 +591,11 @@ describe('campaigns needing attention', () => {
     );
 
     expect(response.json().data.map((row: { name: string }) => row.name)).toEqual(['Com problema']);
+
+    // "false" means no filter - `z.coerce.boolean()` used to read it as true.
+    const unfiltered = await app.inject(
+      authed({ method: 'GET', url: '/api/campaigns?needsAttention=false' }, cookie),
+    );
+    expect(unfiltered.json().meta.total).toBe(2);
   });
 });

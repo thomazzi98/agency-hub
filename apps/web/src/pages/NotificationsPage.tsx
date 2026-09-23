@@ -64,8 +64,14 @@ export default function NotificationsPage() {
         />
       </Card>
 
-      {(list.error ?? markRead.error ?? markAll.error) && (
-        <Alert tone="error">{(list.error ?? markRead.error ?? markAll.error)!.message}</Alert>
+      {/* A failed load can be retried; a rejected mutation cannot — see FilesPage. */}
+      {list.error && (
+        <Alert tone="error" onRetry={() => void list.refetch()}>
+          {list.error.message}
+        </Alert>
+      )}
+      {(markRead.error ?? markAll.error) && (
+        <Alert tone="error">{(markRead.error ?? markAll.error)!.message}</Alert>
       )}
       {notice && <Alert tone="success">{notice}</Alert>}
 

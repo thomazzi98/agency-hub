@@ -175,17 +175,67 @@ test.describe('pagination and layout', () => {
     expect((await capped.json()).meta).toMatchObject({ pageSize: 100, total: 21 });
   });
 
-  test('no screen scrolls sideways on a phone', async ({ page }, testInfo) => {
-    // The nav strip scrolls within itself by design; the page itself never may
-    // (12-ui-ux-guidelines.md#mobile-first). Only meaningful at a phone width.
-    test.skip(testInfo.project.name !== 'mobile', 'phone viewport only');
-
+  test('no screen scrolls sideways, on a phone or on a desktop', async ({ page }, testInfo) => {
+    // The nav strip scrolls within itself on a phone by design; the page itself never may
+    // (12-ui-ux-guidelines.md#mobile-first). Checked at desktop width too: an admin's
+    // fourteen sections once ran past the edge of a 1280px screen, taking the whole page
+    // sideways with them.
     await signIn(page, admin(testInfo).email);
     const companyName = unique('Cliente', testInfo);
     await page.goto('/empresas/nova');
     await page.getByLabel('Nome').fill(companyName);
     await page.getByRole('button', { name: 'Criar' }).click();
     await expect(page.getByRole('heading', { name: 'Editar empresa' })).toBeVisible();
+
+    // Something to show, named as long as the forms allow and with nowhere to break - what
+    // a pasted link or a file_name_like_this looks like. An empty company proves little:
+    // the dashboard panels and the lists once let such a title stretch them past the edge
+    // of a phone, and the detail headings ran off even a desktop.
+    const companyId = new URL(page.url()).pathname.split('/').pop()!;
+    const longName = `${'nome_comprido_sem_espacos_'.repeat(5)}${Date.now()}`;
+    const me = (await (await page.request.get('/api/auth/me')).json()).data as { id: string };
+    const hoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const daysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const content = await page.request.post('/api/content', {
+      data: { companyId, title: longName, scheduledAt: hoursAgo },
+    });
+    expect(content.status()).toBe(201);
+    const request = await page.request.post('/api/pending-requests', {
+      data: {
+        companyId,
+        title: longName,
+        description: longName,
+        responsibleUserId: me.id,
+        dueDate: daysAgo,
+      },
+    });
+    expect(request.status()).toBe(201);
+    const account = await page.request.post('/api/ad-accounts', {
+      data: { companyId, platform: 'meta', name: 'Conta principal' },
+    });
+    expect(account.status()).toBe(201);
+    const campaign = await page.request.post('/api/campaigns', {
+      data: {
+        companyId,
+        adAccountId: (await account.json()).data.id,
+        name: longName,
+        objective: longName.slice(0, 160),
+      },
+    });
+    expect(campaign.status()).toBe(201);
+
+    // The screens that show one company at a time are shown this one. It was created
+    // last, so it is also the proof that a selector offers every company, not only the
+    // first hundred.
+    const scoped = new Set([
+      '/',
+      '/projetos/novo',
+      '/calendario',
+      '/publicacoes',
+      '/arquivos',
+      '/pendencias',
+      '/campanhas',
+    ]);
 
     for (const path of [
       '/',
@@ -205,17 +255,18 @@ test.describe('pagination and layout', () => {
       '/exclusoes',
       '/identidade-visual',
       '/backup',
+      `/pendencias/${(await request.json()).data.id}`,
+      `/campanhas/${(await campaign.json()).data.id}`,
     ]) {
       await page.goto(path);
       await expect(page.locator('main h1').first()).toBeVisible();
-      // Screens with a company selector show their real content once one is chosen.
-      const selector = page.getByLabel('Empresa').first();
-      if ((await selector.count()) > 0) {
-        await expect(selector.locator('option', { hasText: companyName }))
-          .toHaveCount(1, { timeout: 3000 })
-          .then(() => selector.selectOption({ label: companyName }))
-          .catch(() => undefined);
+      if (scoped.has(path)) {
+        const selector = page.getByLabel('Empresa').first();
+        await expect(selector.locator('option', { hasText: companyName })).toHaveCount(1);
+        await selector.selectOption({ label: companyName });
       }
+      // Measured once what was fetched is on screen, not before.
+      await page.waitForLoadState('networkidle');
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );

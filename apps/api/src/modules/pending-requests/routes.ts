@@ -14,6 +14,7 @@ import {
 } from '../notifications/events.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
+import { businessToday } from '../../shared/business-day.js';
 import type { AuthenticatedActor } from '../../shared/actor.js';
 import { AWAITING_RECIPIENT_STATUSES, UNFINISHED_STATUSES } from './status.js';
 
@@ -55,6 +56,10 @@ const requestSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
+  // Who it is waiting on and who asked: a pendência is a conversation between two
+  // people, and ids alone left the screen unable to say which two.
+  responsibleUser: { select: { name: true } },
+  createdBy: { select: { name: true } },
 } as const;
 
 const listQuerySchema = paginationSchema.extend({
@@ -134,10 +139,13 @@ function withFlags(row: RequestRow, actorId: string, today: Date) {
   };
 }
 
-/** Midnight today, UTC: `due_date` is a date column, so the comparison must be too. */
+/**
+ * Today's date as a `date` column stores it: `due_date` is a date, so the comparison
+ * must be too - and "today" is the agency's day, so a request due on the 23rd is not
+ * late at 21:00 on the 23rd just because UTC has moved on.
+ */
 function startOfToday(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return businessToday();
 }
 
 function companyScope(
@@ -213,7 +221,11 @@ export async function pendingRequestRoutes(app: FastifyInstance): Promise<void> 
           select: requestSelect,
           // Oldest first inside the unfinished views: the one waiting longest is the
           // one that needs chasing.
-          orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+          orderBy: [
+            { dueDate: { sort: 'asc', nulls: 'last' } },
+            { createdAt: 'desc' },
+            { id: 'asc' },
+          ],
           ...paginationArgs(query),
         }),
         tx.pendingRequest.count({ where }),

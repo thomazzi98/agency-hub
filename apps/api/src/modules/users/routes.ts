@@ -90,7 +90,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
         tx.user.findMany({
           where,
           select: { ...userSelect, memberships: { select: membershipSelect } },
-          orderBy: { [query.sort]: query.order },
+          orderBy: [{ [query.sort]: query.order }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.user.count({ where }),

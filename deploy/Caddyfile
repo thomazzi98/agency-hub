@@ -58,6 +58,12 @@ http:// {
 		root * /srv
 		# A single-page app: unknown paths are routes, not missing files.
 		try_files {path} /index.html
+		# The shell names the hashed bundles each deploy replaces. Sent with no caching
+		# rule at all, browsers cached it heuristically - for hours after a deploy they
+		# kept loading the previous release. It is revalidated instead, which with its
+		# ETag costs a 304 and nothing more.
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
 		file_server
 	}
 }

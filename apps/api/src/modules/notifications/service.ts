@@ -1,3 +1,4 @@
+import type { UserRole } from '@prisma/client';
 import type { ScopedDb } from '../../shared/tenant-scope.js';
 
 export interface NotifyInput {
@@ -19,23 +20,36 @@ export interface NotifyInput {
  *
  * `agency_admin` users have no membership rows — their access is the role — so they
  * are unioned in explicitly rather than being silently missed.
+ *
+ * `roles` narrows it for events about something not every member may see (campaigns).
  */
 export async function companyAudience(
   tx: ScopedDb,
   companyId: string,
-  options: { exclude?: string | null; includeAgencyAdmins?: boolean } = {},
+  options: { exclude?: string | null; includeAgencyAdmins?: boolean; roles?: UserRole[] } = {},
 ): Promise<string[]> {
+  const includeAdmins =
+    options.includeAgencyAdmins !== false &&
+    (options.roles === undefined || options.roles.includes('agency_admin'));
+
   const [memberships, admins] = await Promise.all([
     tx.companyMembership.findMany({
-      where: { companyId, status: 'active', user: { status: 'active' } },
+      where: {
+        companyId,
+        status: 'active',
+        user: {
+          status: 'active',
+          ...(options.roles ? { role: { in: options.roles } } : {}),
+        },
+      },
       select: { userId: true },
     }),
-    options.includeAgencyAdmins === false
-      ? Promise.resolve([])
-      : tx.user.findMany({
+    includeAdmins
+      ? tx.user.findMany({
           where: { role: 'agency_admin', status: 'active' },
           select: { id: true },
-        }),
+        })
+      : Promise.resolve([]),
   ]);
 
   const ids = new Set<string>(memberships.map((row) => row.userId));
@@ -117,30 +131,29 @@ export async function notify(
 
   const relatedType = input.relatedType ?? null;
   const relatedId = input.relatedId ?? null;
-  let written = 0;
 
-  for (const recipientId of recipients) {
-    written += await tx.$executeRaw`
-      INSERT INTO "notifications"
-        ("recipient_id", "company_id", "type", "title", "message",
-         "actor_id", "related_type", "related_id")
-      VALUES (
-        ${recipientId}::uuid, ${input.companyId}::uuid, ${input.type},
-        ${input.title}, ${input.message}, ${input.actorId ?? null}::uuid,
-        ${relatedType}, ${relatedId}::uuid
-      )
-      ON CONFLICT ("recipient_id", "type", "related_type", "related_id")
-        WHERE "read_at" IS NULL
-      DO UPDATE SET
-        "title" = EXCLUDED."title",
-        "message" = EXCLUDED."message",
-        "actor_id" = EXCLUDED."actor_id",
-        "company_id" = EXCLUDED."company_id",
-        -- Bumped so the collapsed item sorts as the recent thing it now is, and so the
-        -- push sweep can tell it changed since it was last delivered.
-        "created_at" = now()
-    `;
-  }
-
-  return written;
+  // One statement for the whole audience rather than one round trip per recipient:
+  // a company-wide event reaches every member and every agency admin, inside the
+  // request's own transaction. The recipients are distinct (the Set above), which is
+  // what ON CONFLICT DO UPDATE needs to touch each row at most once.
+  return tx.$executeRaw`
+    INSERT INTO "notifications"
+      ("recipient_id", "company_id", "type", "title", "message",
+       "actor_id", "related_type", "related_id")
+    SELECT
+      recipient, ${input.companyId}::uuid, ${input.type},
+      ${input.title}, ${input.message}, ${input.actorId ?? null}::uuid,
+      ${relatedType}, ${relatedId}::uuid
+    FROM unnest(${recipients}::uuid[]) AS recipient
+    ON CONFLICT ("recipient_id", "type", "related_type", "related_id")
+      WHERE "read_at" IS NULL
+    DO UPDATE SET
+      "title" = EXCLUDED."title",
+      "message" = EXCLUDED."message",
+      "actor_id" = EXCLUDED."actor_id",
+      "company_id" = EXCLUDED."company_id",
+      -- Bumped so the collapsed item sorts as the recent thing it now is, and so the
+      -- push sweep can tell it changed since it was last delivered.
+      "created_at" = now()
+  `;
 }

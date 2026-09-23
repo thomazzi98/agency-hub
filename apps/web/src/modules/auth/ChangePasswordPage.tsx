@@ -1,9 +1,15 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, LoadingScreen, TextField } from '../../components/ui';
 import { strings } from '../../lib/strings';
 import { useChangePassword, useCurrentUser } from './session';
 
+/**
+ * Both the forced first-access change and the voluntary one (10-authentication-and-
+ * sessions.md: "users can change their own password at any time"). The forced one
+ * leads into the app; the voluntary one stays here, says it worked, and offers the way
+ * back - it used to be reachable only by typing its address, and had no way out.
+ */
 export default function ChangePasswordPage() {
   const { data: currentUser, isPending } = useCurrentUser();
   const changePassword = useChangePassword();
@@ -13,6 +19,7 @@ export default function ChangePasswordPage() {
   const [newValue, setNewValue] = useState('');
   const [confirmValue, setConfirmValue] = useState('');
   const [mismatch, setMismatch] = useState(false);
+  const [changed, setChanged] = useState(false);
 
   if (isPending) {
     return <LoadingScreen />;
@@ -31,12 +38,27 @@ export default function ChangePasswordPage() {
       return;
     }
     setMismatch(false);
+    setChanged(false);
+    const wasForced = currentUser.mustChangePassword;
 
     changePassword.mutate(
       { currentPassword: currentValue, newPassword: newValue },
-      { onSuccess: () => navigate('/', { replace: true }) },
+      {
+        onSuccess: () => {
+          if (wasForced) {
+            navigate('/', { replace: true });
+            return;
+          }
+          setChanged(true);
+          setCurrentValue('');
+          setNewValue('');
+          setConfirmValue('');
+        },
+      },
     );
   };
+
+  const isForced = currentUser.mustChangePassword;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
@@ -45,16 +67,17 @@ export default function ChangePasswordPage() {
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
             <div>
               <h1 className="text-lg font-semibold text-slate-900">
-                {strings.changePassword.title}
+                {isForced ? strings.changePassword.title : strings.changePassword.voluntaryTitle}
               </h1>
-              {currentUser.mustChangePassword && (
-                <p className="mt-1 text-sm text-slate-500">
-                  {strings.changePassword.forcedSubtitle}
-                </p>
-              )}
+              <p className="mt-1 text-sm text-slate-500">
+                {isForced
+                  ? strings.changePassword.forcedSubtitle
+                  : strings.changePassword.voluntarySubtitle}
+              </p>
             </div>
 
             {changePassword.isError && <Alert tone="error">{changePassword.error.message}</Alert>}
+            {changed && <Alert tone="success">{strings.changePassword.success}</Alert>}
 
             <TextField
               label={strings.changePassword.currentPassword}
@@ -72,6 +95,7 @@ export default function ChangePasswordPage() {
               name="newPassword"
               autoComplete="new-password"
               required
+              hint={strings.changePassword.newPasswordHint}
               value={newValue}
               onChange={(event) => setNewValue(event.target.value)}
             />
@@ -95,6 +119,15 @@ export default function ChangePasswordPage() {
             >
               {strings.changePassword.submit}
             </Button>
+
+            {!isForced && (
+              <Link
+                to="/sessoes"
+                className="self-center text-sm font-medium text-brand-700 underline underline-offset-2"
+              >
+                {strings.changePassword.back}
+              </Link>
+            )}
           </form>
         </Card>
       </div>

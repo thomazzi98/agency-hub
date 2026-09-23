@@ -26,8 +26,15 @@ export interface Topic {
 export interface TopicReply {
   id: string;
   authorId: string | null;
+  author: { name: string } | null;
   body: string;
   createdAt: string;
+}
+
+export interface TopicDetail extends Topic {
+  creator: { name: string } | null;
+  responsibleUser: { name: string };
+  replies: TopicReply[];
 }
 
 export interface TopicListParams {
@@ -60,7 +67,7 @@ export function useTopics(params: TopicListParams) {
 export function useTopic(id: string | undefined) {
   return useQuery({
     queryKey: [...topicsKey, 'detail', id],
-    queryFn: () => apiRequest<Topic & { replies: TopicReply[] }>(`/topics/${id}`),
+    queryFn: () => apiRequest<TopicDetail>(`/topics/${id}`),
     enabled: Boolean(id),
   });
 }

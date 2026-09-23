@@ -126,7 +126,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         tx.project.findMany({
           where,
           select: projectSelect,
-          orderBy: { [query.sort]: query.order },
+          orderBy: [{ [query.sort]: query.order }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.project.count({ where }),

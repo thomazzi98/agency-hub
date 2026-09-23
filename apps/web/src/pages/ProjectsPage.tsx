@@ -11,6 +11,7 @@ import {
   Spinner,
   TextField,
 } from '../components/ui';
+import { formatDateOnly } from '../lib/dates';
 import { projectStatusLabel, projectTypeLabel, strings } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
 import { useProjects, type ProjectListParams, type ProjectStatus } from '../modules/projects/api';
@@ -24,14 +25,9 @@ const statusOptions = [
 ];
 
 function formatPeriod(startDate: string | null, endDate: string | null): string {
-  const format = (value: string) =>
-    new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(
-      new Date(value),
-    );
-
   if (!startDate && !endDate) return strings.projects.noPeriod;
-  if (startDate && endDate) return `${format(startDate)} – ${format(endDate)}`;
-  return format((startDate ?? endDate)!);
+  if (startDate && endDate) return `${formatDateOnly(startDate)} – ${formatDateOnly(endDate)}`;
+  return formatDateOnly((startDate ?? endDate)!);
 }
 
 export default function ProjectsPage() {

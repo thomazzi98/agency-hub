@@ -48,6 +48,7 @@ export interface Campaign {
 export interface CampaignHistoryEntry {
   id: string;
   changedById: string | null;
+  changedBy: { name: string } | null;
   fieldName: string;
   oldValue: string | null;
   newValue: string | null;

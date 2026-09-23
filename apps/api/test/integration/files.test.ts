@@ -447,6 +447,95 @@ describe('deletion request workflow', () => {
     expect(again.json().error.code).toBe('already_reviewed');
   });
 
+  it('lets exactly one of two simultaneous reviews win', async () => {
+    const file = await seedFile({ companyId: world.companyA.id });
+    const requesterCookie = await sessionFor(world.contributorA);
+    const created = await requestDeletion(requesterCookie, file.id);
+    const requestId = created.json().data.id as string;
+
+    const [firstAdmin, secondAdmin] = await Promise.all([
+      sessionFor(world.admin),
+      createTestUser({ email: 'f-admin-2@example.com', role: 'agency_admin' }).then((user) =>
+        sessionFor(user),
+      ),
+    ]);
+
+    // Both read "pending" before either writes; only the status in the UPDATE's WHERE
+    // keeps the second from overwriting the first decision.
+    const answers = await Promise.all([
+      app.inject(
+        authed({ method: 'POST', url: `/api/deletion-requests/${requestId}/approve` }, firstAdmin),
+      ),
+      app.inject(
+        authed({ method: 'POST', url: `/api/deletion-requests/${requestId}/reject` }, secondAdmin),
+      ),
+    ]);
+
+    expect(answers.map((answer) => answer.statusCode).sort()).toEqual([200, 409]);
+    const winner = answers.find((answer) => answer.statusCode === 200)!.json().data;
+    const stored = await systemRead((tx) =>
+      tx.deletionRequest.findUniqueOrThrow({ where: { id: requestId } }),
+    );
+    expect(stored.status).toBe(winner.status);
+    // One decision, so one notification to the requester.
+    expect(
+      await systemRead((tx) =>
+        tx.notification.count({
+          where: { recipientId: world.contributorA.id, relatedId: requestId },
+        }),
+      ),
+    ).toBe(1);
+  });
+
+  it('shows the reviewer what is to be deleted, where, and at whose request', async () => {
+    const file = await seedFile({
+      companyId: world.companyA.id,
+      originalName: 'contrato-antigo.pdf',
+    });
+    const requester = await createTestUser({
+      email: 'f-requester@example.com',
+      role: 'contributor',
+      name: 'Ana Pedido',
+    });
+    await grantMembership(requester.id, world.companyA.id);
+    await requestDeletion(await sessionFor(requester), file.id);
+
+    const adminCookie = await sessionFor(world.admin);
+    const response = await app.inject(
+      authed({ method: 'GET', url: '/api/deletion-requests' }, adminCookie),
+    );
+
+    expect(response.json().data[0]).toMatchObject({
+      targetLabel: 'contrato-antigo.pdf',
+      targetRemoved: false,
+      company: { name: 'Empresa A' },
+      requestedBy: { name: 'Ana Pedido' },
+      reviewedBy: null,
+    });
+  });
+
+  it('reports another company named in the filter as missing, not as an empty list', async () => {
+    const cookie = await sessionFor(world.contributorA);
+
+    const [foreign, absent] = await Promise.all([
+      app.inject(
+        authed(
+          { method: 'GET', url: `/api/deletion-requests?companyId=${world.companyB.id}` },
+          cookie,
+        ),
+      ),
+      app.inject(
+        authed(
+          { method: 'GET', url: `/api/deletion-requests?companyId=${crypto.randomUUID()}` },
+          cookie,
+        ),
+      ),
+    ]);
+
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.body).toBe(absent.body);
+  });
+
   it('never shows one company requests to another', async () => {
     const file = await seedFile({ companyId: world.companyA.id });
     const requesterCookie = await sessionFor(world.contributorA);

@@ -14,7 +14,7 @@ import {
   TextAreaField,
   TextField,
 } from '../components/ui';
-import { formatDate } from '../lib/dates';
+import { formatDateOnly } from '../lib/dates';
 import { pendingRequestTone } from '../lib/tones';
 import {
   pendingRequestEmptyLabel,
@@ -57,7 +57,9 @@ const priorities: Priority[] = ['low', 'medium', 'high'];
 function NewRequestDialog({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const create = useCreatePendingRequest();
   const members = useCompanyMembers(companyId);
-  const projects = useProjects({ page: 1, companyId, status: 'all' });
+  // Every project of the company, not the first page of them: a picker that silently
+  // stops at twenty leaves the rest impossible to choose.
+  const projects = useProjects({ page: 1, pageSize: 100, companyId, status: 'all' });
 
   const [form, setForm] = useState({
     title: '',
@@ -282,16 +284,20 @@ export default function PendingRequestsPage() {
                         <div className="min-w-0">
                           <Link
                             to={`/pendencias/${item.id}`}
-                            className="truncate font-medium text-slate-900 underline-offset-2 hover:underline"
+                            className="block truncate font-medium text-slate-900 underline-offset-2 hover:underline"
                           >
                             {item.title}
                           </Link>
                           <p className="text-xs text-slate-500">
                             {item.dueDate
-                              ? strings.pendingRequests.dueOn(formatDate(item.dueDate))
+                              ? strings.pendingRequests.dueOn(formatDateOnly(item.dueDate))
                               : strings.pendingRequests.noDueDate}
                             {' · '}
                             {topicPriorityLabel(item.priority)}
+                            {' · '}
+                            {`${strings.pendingRequests.responsible}: ${
+                              item.isMine ? strings.comments.you : item.responsibleUser.name
+                            }`}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-1">

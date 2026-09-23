@@ -1,15 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Card, LoadingScreen, TextAreaField } from '../components/ui';
+import { formatDateOnly, formatDateTime } from '../lib/dates';
 import { strings, topicPriorityLabel, topicStatusLabel } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
 import { useReplyToTopic, useTopic, useUpdateTopic } from '../modules/topics/api';
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
 
 export default function TopicDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -80,7 +75,34 @@ export default function TopicDetailPage() {
         </div>
 
         <p className="text-sm whitespace-pre-wrap text-slate-800">{data.initialMessage}</p>
-        <p className="text-xs text-slate-500">{formatDateTime(data.createdAt)}</p>
+
+        {/* The two people this conversation is between. */}
+        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-slate-500">{strings.topics.createdBy}</dt>
+            <dd className="text-slate-900">
+              {data.creator?.name ?? strings.comments.unknownAuthor}
+              {isCreator && ` (${strings.topics.you})`}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">{strings.topics.responsible}</dt>
+            <dd className="text-slate-900">
+              {data.responsibleUser.name}
+              {isResponsible && ` (${strings.topics.you})`}
+            </dd>
+          </div>
+          {data.dueDate && (
+            <div>
+              <dt className="text-xs text-slate-500">{strings.topics.dueDate}</dt>
+              <dd className="text-slate-900">{formatDateOnly(data.dueDate)}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-xs text-slate-500">{strings.topics.openedAt}</dt>
+            <dd className="text-slate-900">{formatDateTime(data.createdAt)}</dd>
+          </div>
+        </dl>
       </Card>
 
       <Card className="flex flex-col gap-4">
@@ -92,11 +114,13 @@ export default function TopicDetailPage() {
           <ul className="flex flex-col gap-3">
             {data.replies.map((item) => (
               <li key={item.id} className="rounded-lg border border-slate-200 p-3">
-                <p className="text-sm whitespace-pre-wrap text-slate-800">{item.body}</p>
-                <p className="mt-2 text-xs text-slate-500">
-                  {formatDateTime(item.createdAt)}
-                  {item.authorId === currentUser?.id && ` · ${strings.topics.you}`}
+                <p className="text-xs font-semibold text-slate-700">
+                  {item.authorId === currentUser?.id
+                    ? strings.comments.you
+                    : (item.author?.name ?? strings.comments.unknownAuthor)}
                 </p>
+                <p className="mt-1 text-sm whitespace-pre-wrap text-slate-800">{item.body}</p>
+                <p className="mt-2 text-xs text-slate-500">{formatDateTime(item.createdAt)}</p>
               </li>
             ))}
           </ul>

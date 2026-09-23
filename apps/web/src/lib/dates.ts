@@ -70,6 +70,30 @@ export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(date));
 }
 
+/**
+ * A calendar date the API stores without a time (a deadline, a project period). It
+ * arrives as midnight UTC, and formatting that in the browser's zone showed the day
+ * before everywhere west of Greenwich - "prazo 22/09" for a request due on the 23rd.
+ * Read in UTC, it is the date that was typed.
+ */
+export function formatDateOnly(date: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(
+    new Date(date),
+  );
+}
+
+/** A `<input type="date">` value for a local day, never shifted through UTC. */
+export function toDateInput(date: Date): string {
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** The instant a `<input type="date">` value's local day starts. */
+export function startOfDateInput(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year!, month! - 1, day!);
+}
+
 export function formatDateTime(date: Date | string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(
     new Date(date),

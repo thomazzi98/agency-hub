@@ -346,6 +346,44 @@ describe('full upload lifecycle against real storage', () => {
     expect(completed.json().error.code).toBe('upload_incomplete');
     expect(await systemRead((tx) => tx.file.count())).toBe(0);
   }, 60_000);
+
+  it('refuses to assemble more bytes than the size policy allows, whatever was declared', async () => {
+    const cookie = await sessionFor(world.contributorA);
+
+    // Declared tiny, which is all the policy saw at creation...
+    const created = await createSession(cookie, { originalName: 'declarado.jpg', sizeBytes: 1024 });
+    const session = created.json().data as CreatedSession;
+    // ...with a ceiling low enough to cross in a test. A presigned part URL does not
+    // bind the length of its body, so this is what a client can actually send.
+    await systemRead((tx) =>
+      tx.uploadSession.update({
+        where: { id: session.id },
+        data: { maxAllowedSizeBytes: BigInt(32 * 1024) },
+      }),
+    );
+
+    const presigned = await presignParts(cookie, session.id, [1]);
+    await putPart(presigned.json().data.parts[0].url as string, syntheticBytes(64 * 1024));
+
+    const completed = await app.inject(
+      authed({ method: 'POST', url: `/api/uploads/${session.id}/complete` }, cookie),
+    );
+
+    expect(completed.statusCode).toBe(422);
+    expect(completed.json().error.code).toBe('file_too_large');
+    expect(await systemRead((tx) => tx.file.count())).toBe(0);
+
+    const stored = await systemRead((tx) => tx.uploadSession.findFirstOrThrow());
+    expect(stored.status).toBe('aborted');
+    // Released at the provider too, not just marked here.
+    expect(await headObject(stored.storageKey)).toBeNull();
+    await expect(
+      listCommittedParts({
+        storageKey: stored.storageKey,
+        providerUploadId: stored.providerUploadId,
+      }),
+    ).rejects.toThrow();
+  }, 60_000);
 });
 
 describe('resume', () => {

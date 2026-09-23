@@ -1395,8 +1395,60 @@ each with its steps in [deployment.md](deployment.md#what-the-ip-first-setup-can
   concurrency. The RLS pattern holds a connection per *request*, which is why the pool
   is sized the way it is ([ADR-0011](decisions/0011-infrastructure-sizing.md)); the
   sizing is reasoned, not measured.
-- **A company picker beyond 100 companies** needs to become searchable. The agency has
-  dozens today ([17-performance-requirements.md](sdd/17-performance-requirements.md)),
-  so this is a growth item, recorded rather than guessed at.
+- **A company picker beyond a few hundred companies** would be kinder with a search box.
+  Every company is offered since the improvement review (the selectors fetch every page;
+  before, anything past the hundredth was silently missing), but a long native list is
+  the whole picker. The agency has dozens today
+  ([17-performance-requirements.md](sdd/17-performance-requirements.md)), so this is a
+  growth item.
 - **Per-company branding** is postponed, not planned
   ([23-open-questions.md](sdd/23-open-questions.md)).
+
+---
+
+## Improvement review (2026-09-23)
+
+**Status:** done on branch `improvement-review`; the full report, in Portuguese for the
+product owner, is [IMPROVEMENT_REVIEW.md](../IMPROVEMENT_REVIEW.md). No migration.
+
+A whole-system pass looking for what the stage-by-stage tests could not see: defects that
+need volume, a time zone, concurrency or time passing. The ones that mattered most:
+
+- **The dashboard tiles never said more than 5** — they read the length of a five-row
+  panel. Real counts now.
+- **"Today" was a UTC day**, which ends at 21:00 in São Paulo: evening posts missed the
+  "today" panel and deadlines lapsed three hours early; the browser also showed every
+  date-only deadline one day early. `shared/business-day.ts` and `APP_TIMEZONE`
+  (default `America/Sao_Paulo`); `formatDateOnly` in the web app.
+- **Push stopped for everyone** once 200 unread notifications of people with no device
+  had piled up — the sweep's oldest-first batch never got past them. The overdue sweep
+  also re-notified every hour for up to a month. Both fixed, both now tested.
+- **Campaign notifications reached people who may not see the campaign**, and
+  contributors could see campaigns at all, against the permission matrix.
+- **Brute-force limits held only against a patient attacker**: the lockout counter and
+  the per-IP ceiling were check-then-act; step-up reauthentication and the password
+  change had no limit. The size policy of an upload was checked against the declared
+  size only.
+- **Files attached to answers were never shown**, comments did not say who wrote them,
+  and the deletion queue did not say what was about to be deleted.
+- **Screens scrolled sideways.** On a phone any long title pushed the dashboard and the
+  request and campaign lists past the edge (`truncate` on an inline link, an `auto` grid
+  track); a pasted link or an `unbroken_name` did it even on a desktop; the admin's menu
+  ran off a 1280 px screen. `overflow-wrap: break-word` on the body, shrinkable tracks,
+  and the E2E sideways check now runs on desktop too, with long names to show.
+- **Companies past the hundredth were missing from every selector** — one page of 100,
+  archived ones included. `useAllCompanies` now fetches every page.
+
+Also: route-level code splitting (first load 477 KB → 290 KB), an error boundary, a
+scrollable and keyboard-safe modal, file search, a date-picker for duplicating content,
+reachable password change, `no-cache` on the app shell so a deploy is picked up at once,
+and an `id` tie-breaker on every paginated list.
+
+### Decisions taken autonomously
+
+| Decision | Rationale |
+|---|---|
+| Contributors no longer see campaigns | 06-permissions-and-authorization.md marks "Campaigns — view" ❌ for them, 09 lists who may view and they are not in it; the code had granted it. One line to revert if the product wants otherwise (`campaignVisibilityScope`). |
+| Granting access no longer signs the person out | Access is re-read on every request, so a grant is in effect at once; signing out killed in-flight uploads. Taking access away still signs out, as the existing suite requires. |
+| A folder whose files were all soft-deleted can be deleted | Those files keep their rows and lose only the folder reference; before, the folder could never be removed. |
+| Push only for notifications from the last hour | Push is an accelerant on the in-app centre (08); a buzz about yesterday helps nobody. |

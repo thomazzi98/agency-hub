@@ -80,7 +80,7 @@ test.describe('isolation between two companies', () => {
     const theirProjectId = page.url().split('/').pop()!;
 
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: theirsName });
     await page.getByRole('button', { name: 'Nova pendência' }).click();
     const dialog = page.getByRole('dialog', { name: 'Nova pendência' });

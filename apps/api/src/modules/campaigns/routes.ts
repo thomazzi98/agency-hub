@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AdPlatform, Campaign, Prisma } from '@prisma/client';
-import { parseInput } from '../../shared/validation.js';
+import { booleanQuery, parseInput } from '../../shared/validation.js';
 import { forbidden, notFound, unprocessable } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
 import { clientIp } from '../../shared/request-context.js';
@@ -18,7 +18,12 @@ import {
   notifyCampaignNeedsAttention,
   notifyCampaignStatusChanged,
 } from '../notifications/events.js';
-import { CAMPAIGN_ATTENTION_STATUSES, TRACKED_FIELDS, campaignSelect } from './campaign.js';
+import {
+  CAMPAIGN_ATTENTION_STATUSES,
+  TRACKED_FIELDS,
+  campaignSelect,
+  campaignVisibilityScope,
+} from './campaign.js';
 
 const platform = z.enum(['meta', 'tiktok']);
 const adAccountStatus = z.enum(['active', 'paused', 'closed']);
@@ -95,7 +100,8 @@ const listQuerySchema = paginationSchema.extend({
   platform: platform.optional(),
   status: z.union([campaignStatus, z.literal('all')]).default('all'),
   responsibleUserId: z.string().uuid().optional(),
-  needsAttention: z.coerce.boolean().optional(),
+  // Not `z.coerce.boolean()`, which reads "false" as true (shared/validation.ts).
+  needsAttention: booleanQuery.optional(),
   search: z.string().trim().min(1).max(200).optional(),
 });
 
@@ -115,16 +121,6 @@ function requireCampaignManagement(actor: AuthenticatedActor, companyId: string)
   }
 }
 
-/**
- * A `client_manager` or `contributor` only ever sees campaigns the agency marked
- * visible. Applied as a `where` clause rather than filtered afterwards, so a hidden
- * campaign is never sent to the browser at all.
- */
-function visibilityScope(actor: AuthenticatedActor): Prisma.CampaignWhereInput {
-  const isAgency = actor.role === 'agency_admin' || actor.role === 'agency_manager';
-  return isAgency ? {} : { visibleToClient: true };
-}
-
 function companyScope(
   companyId: string | undefined,
   companyIds: string[] | null,
@@ -141,7 +137,7 @@ async function findCampaignInScope(
   const companyIds = authorizedCompanyIds(actor);
   return tx.campaign.findFirst({
     where: {
-      AND: [{ id }, companyScope(undefined, companyIds), visibilityScope(actor)],
+      AND: [{ id }, companyScope(undefined, companyIds), campaignVisibilityScope(actor)],
     },
   });
 }
@@ -212,6 +208,8 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
               ? {}
               : { companyId: { in: authorizedCompanyIds(actor)! } },
           query.platform ? { platform: query.platform } : {},
+          // The accounts belong to the campaign module, and a contributor sees none of it.
+          actor.role === 'contributor' ? { id: { in: [] } } : {},
         ],
       };
 
@@ -219,7 +217,7 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
         tx.adAccount.findMany({
           where,
           select: adAccountSelect,
-          orderBy: { name: 'asc' },
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.adAccount.count({ where }),
@@ -321,7 +319,7 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
       const where: Prisma.CampaignWhereInput = {
         AND: [
           companyScope(query.companyId, authorizedCompanyIds(actor)),
-          visibilityScope(actor),
+          campaignVisibilityScope(actor),
           query.adAccountId ? { adAccountId: query.adAccountId } : {},
           query.platform ? { platform: query.platform } : {},
           query.status === 'all' ? {} : { status: query.status },
@@ -335,7 +333,7 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
         tx.campaign.findMany({
           where,
           select: campaignSelect,
-          orderBy: [{ status: 'asc' }, { name: 'asc' }],
+          orderBy: [{ status: 'asc' }, { name: 'asc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.campaign.count({ where }),
@@ -359,6 +357,9 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
         select: {
           id: true,
           changedById: true,
+          // "Who changed what, and why" is what the history is for; an id alone
+          // answers only the what (09-campaign-management.md#change-history).
+          changedBy: { select: { name: true } },
           fieldName: true,
           oldValue: true,
           newValue: true,
@@ -487,22 +488,18 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
       });
 
       if (changed.includes('status')) {
+        const event = {
+          companyId: campaign.companyId,
+          actorId: actor.userId,
+          campaignId: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          visibleToClient: campaign.visibleToClient,
+        };
         if (CAMPAIGN_ATTENTION_STATUSES.includes(campaign.status)) {
-          await notifyCampaignNeedsAttention(tx, {
-            companyId: campaign.companyId,
-            actorId: actor.userId,
-            campaignId: campaign.id,
-            name: campaign.name,
-            status: campaign.status,
-          });
+          await notifyCampaignNeedsAttention(tx, event);
         } else {
-          await notifyCampaignStatusChanged(tx, {
-            companyId: campaign.companyId,
-            actorId: actor.userId,
-            campaignId: campaign.id,
-            name: campaign.name,
-            status: campaign.status,
-          });
+          await notifyCampaignStatusChanged(tx, event);
         }
       }
 

@@ -258,10 +258,31 @@ export async function folderRoutes(app: FastifyInstance): Promise<void> {
         throw forbidden('forbidden', 'Você só pode excluir pastas que você criou.');
       }
 
-      const children = await tx.folder.count({ where: { parentFolderId: existing.id } });
-      if (children > 0) {
+      // "Empty" means empty of what anyone can see or is still sending: subfolders, live
+      // files, uploads in flight. Counting only subfolders let a folder full of files
+      // reach the DELETE, where the foreign key refused it and the person got an
+      // internal error.
+      const [children, liveFiles, activeUploads] = await Promise.all([
+        tx.folder.count({ where: { parentFolderId: existing.id } }),
+        tx.file.count({ where: { folderId: existing.id, deletedAt: null } }),
+        tx.uploadSession.count({
+          where: { folderId: existing.id, status: { in: ['pending', 'in_progress'] } },
+        }),
+      ]);
+      if (children > 0 || liveFiles > 0 || activeUploads > 0) {
         throw conflict('folder_not_empty', 'Esvazie a pasta antes de excluí-la.');
       }
+
+      // What still points at the folder is history: files removed earlier, uploads that
+      // finished or were abandoned. It keeps its record and stops naming a folder that is
+      // going away - otherwise a folder that looks empty could never be deleted at all.
+      const [detachedFiles] = await Promise.all([
+        tx.file.updateMany({
+          where: { folderId: existing.id, deletedAt: { not: null } },
+          data: { folderId: null },
+        }),
+        tx.uploadSession.updateMany({ where: { folderId: existing.id }, data: { folderId: null } }),
+      ]);
 
       await tx.folder.delete({ where: { id: params.id } });
 
@@ -272,7 +293,7 @@ export async function folderRoutes(app: FastifyInstance): Promise<void> {
         entityType: 'folder',
         entityId: existing.id,
         ipAddress: clientIp(request),
-        metadata: { name: existing.name },
+        metadata: { name: existing.name, detachedDeletedFiles: detachedFiles.count },
       });
 
       return { data: { id: existing.id } };

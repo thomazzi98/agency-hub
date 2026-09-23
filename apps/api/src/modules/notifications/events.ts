@@ -1,5 +1,13 @@
 import type { ScopedDb } from '../../shared/tenant-scope.js';
+import { campaignAudienceRoles } from '../campaigns/campaign.js';
 import { NotificationType } from './catalog.js';
+import {
+  campaignStatusLabel,
+  fileStatusLabel,
+  networkLabel,
+  productionStatusLabel,
+  publicationStatusLabel,
+} from './labels.js';
 import { agencyAdmins, companyAudience, notify, usersWithCompanyAccess } from './service.js';
 
 /**
@@ -43,7 +51,7 @@ export async function notifyFileStatusChanged(
     companyId: input.companyId,
     type: NotificationType.FileStatusChanged,
     title: 'Situação de arquivo alterada',
-    message: `"${truncate(input.fileName)}" agora está como ${input.status}.`,
+    message: `"${truncate(input.fileName)}" agora está como ${fileStatusLabel(input.status)}.`,
     actorId: input.actorId,
     relatedType: 'file',
     relatedId: input.fileId,
@@ -182,7 +190,7 @@ export async function notifyContentStatusChanged(
     companyId: input.companyId,
     type: NotificationType.ContentStatusChanged,
     title: 'Conteúdo atualizado',
-    message: `"${truncate(input.title)}" agora está como ${input.status}.`,
+    message: `"${truncate(input.title)}" agora está como ${productionStatusLabel(input.status)}.`,
     actorId: input.actorId,
     relatedType: 'content',
     relatedId: input.contentId,
@@ -204,7 +212,7 @@ export async function notifyPublicationStatusChanged(
     companyId: input.companyId,
     type: NotificationType.PublicationStatusChanged,
     title: 'Publicação atualizada',
-    message: `"${truncate(input.contentTitle)}" — ${input.network}: ${input.status}.`,
+    message: `"${truncate(input.contentTitle)}" — ${networkLabel(input.network)}: ${publicationStatusLabel(input.status)}.`,
     actorId: input.actorId,
     relatedType: 'publication',
     relatedId: input.contentId,
@@ -316,15 +324,38 @@ export async function notifyDeletionReviewed(
   });
 }
 
+interface CampaignEvent {
+  companyId: string;
+  actorId: string;
+  campaignId: string;
+  name: string;
+  status: string;
+  /** Whether the client may see the campaign at all - and so be told about it. */
+  visibleToClient: boolean;
+}
+
+/**
+ * Only people who could open the campaign hear about it. A notification carries the
+ * campaign's name and status, so sending it to the whole company would hand a hidden
+ * campaign to the very client it was hidden from, and any campaign to a contributor
+ * (09-campaign-management.md#permissions).
+ */
+async function campaignAudience(tx: ScopedDb, input: CampaignEvent): Promise<string[]> {
+  return companyAudience(tx, input.companyId, {
+    exclude: input.actorId,
+    roles: campaignAudienceRoles(input.visibleToClient),
+  });
+}
+
 export async function notifyCampaignStatusChanged(
   tx: ScopedDb,
-  input: { companyId: string; actorId: string; campaignId: string; name: string; status: string },
+  input: CampaignEvent,
 ): Promise<void> {
-  await notify(tx, await companyAudience(tx, input.companyId, { exclude: input.actorId }), {
+  await notify(tx, await campaignAudience(tx, input), {
     companyId: input.companyId,
     type: NotificationType.CampaignStatusChanged,
     title: 'Campanha atualizada',
-    message: `"${truncate(input.name)}" agora está como ${input.status}.`,
+    message: `"${truncate(input.name)}" agora está como ${campaignStatusLabel(input.status)}.`,
     actorId: input.actorId,
     relatedType: 'campaign',
     relatedId: input.campaignId,
@@ -338,13 +369,13 @@ export async function notifyCampaignStatusChanged(
  */
 export async function notifyCampaignNeedsAttention(
   tx: ScopedDb,
-  input: { companyId: string; actorId: string; campaignId: string; name: string; status: string },
+  input: CampaignEvent,
 ): Promise<void> {
-  await notify(tx, await companyAudience(tx, input.companyId, { exclude: input.actorId }), {
+  await notify(tx, await campaignAudience(tx, input), {
     companyId: input.companyId,
     type: NotificationType.CampaignNeedsAttention,
     title: 'Campanha precisa de atenção',
-    message: `"${truncate(input.name)}" está como ${input.status}.`,
+    message: `"${truncate(input.name)}" está como ${campaignStatusLabel(input.status)}.`,
     actorId: input.actorId,
     relatedType: 'campaign',
     relatedId: input.campaignId,

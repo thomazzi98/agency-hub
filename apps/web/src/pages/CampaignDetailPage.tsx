@@ -143,7 +143,7 @@ export default function CampaignDetailPage() {
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h1 className="text-xl font-bold text-slate-900">{item.name}</h1>
+        <h1 className="min-w-0 text-xl font-bold text-slate-900">{item.name}</h1>
         <div className="flex flex-wrap gap-1">
           {!item.visibleToClient && <Badge tone="muted">{strings.campaigns.hidden}</Badge>}
           <Badge tone={campaignTone(item.status)}>{campaignStatusLabel(item.status)}</Badge>
@@ -309,7 +309,13 @@ export default function CampaignDetailPage() {
                 {entry.note && (
                   <p className="text-sm whitespace-pre-wrap text-slate-600">{entry.note}</p>
                 )}
-                <p className="text-xs text-slate-400">{formatDateTime(entry.createdAt)}</p>
+                {/* Who, as well as when: accountability is what this history is for. */}
+                <p className="text-xs text-slate-500">
+                  {strings.campaigns.changedBy(
+                    entry.changedBy?.name ?? strings.comments.unknownAuthor,
+                    formatDateTime(entry.createdAt),
+                  )}
+                </p>
               </li>
             ))}
           </ol>

@@ -19,9 +19,12 @@ export interface OverdueSweepResult {
  * happens because time passed (08-notifications-and-push.md#event-catalog-phase-1), so
  * it needs a sweep rather than a hook in a mutation path.
  *
- * Re-running it is safe: the notification service collapses onto the same unread row,
- * so an item that stays late for a week produces one item in the centre, refreshed,
- * not one per hour.
+ * Each person is told once per lateness, however often the sweep runs. Relying on the
+ * unread row to absorb the repeats was not enough: every run bumped that row, which the
+ * push sweep reads as "changed since it was pushed" - an hourly buzz per late item for
+ * up to a month - and once the person had read it, the next run opened a fresh one.
+ * "Already told" is a notification about this item created at or after the moment it
+ * fell due, so an item rescheduled and missed again is a new lateness and is told again.
  */
 export async function notifyOverdueContent(
   prisma: PrismaClient,
@@ -41,16 +44,51 @@ export async function notifyOverdueContent(
         companyId: true,
         title: true,
         responsibleUserId: true,
+        scheduledAt: true,
       },
+      // The most recent lateness first, should there ever be more than one batch.
+      orderBy: { scheduledAt: 'desc' },
       take: 500,
     });
 
+    if (overdue.length === 0) return { overdue: 0, notified: 0 };
+
+    // One read for the whole batch rather than one per item.
+    const earlier = await tx.notification.findMany({
+      where: {
+        type: NotificationType.ContentOverdue,
+        relatedType: 'content',
+        relatedId: { in: overdue.map((content) => content.id) },
+      },
+      select: { recipientId: true, relatedId: true, createdAt: true },
+    });
+    const earlierByContent = new Map<string, typeof earlier>();
+    for (const row of earlier) {
+      if (!row.relatedId) continue;
+      earlierByContent.set(row.relatedId, [...(earlierByContent.get(row.relatedId) ?? []), row]);
+    }
+
+    const audiences = new Map<string, string[]>();
     let notified = 0;
+
     for (const content of overdue) {
       // The person who owns it if there is one; otherwise everyone who could act.
-      const recipients = content.responsibleUserId
-        ? [content.responsibleUserId]
-        : await companyAudience(tx, content.companyId);
+      let candidates: string[];
+      if (content.responsibleUserId) {
+        candidates = [content.responsibleUserId];
+      } else {
+        const cached = audiences.get(content.companyId);
+        candidates = cached ?? (await companyAudience(tx, content.companyId));
+        audiences.set(content.companyId, candidates);
+      }
+
+      const alreadyTold = new Set(
+        (earlierByContent.get(content.id) ?? [])
+          .filter((row) => row.createdAt >= content.scheduledAt)
+          .map((row) => row.recipientId),
+      );
+      const recipients = candidates.filter((id) => !alreadyTold.has(id));
+      if (recipients.length === 0) continue;
 
       notified += await notify(tx, recipients, {
         companyId: content.companyId,

@@ -92,7 +92,9 @@ test.describe('users and memberships', () => {
 
     await page.getByLabel('Nome').fill('Pessoa de Teste');
     await page.getByLabel('E-mail').fill(email);
-    await page.getByLabel('Perfil').selectOption('contributor');
+    // A manager: the per-company overrides below only mean anything for that role, and
+    // the screen offers them to no one else.
+    await page.getByLabel('Perfil').selectOption('agency_manager');
     await page.getByRole('button', { name: 'Criar' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Senha temporária' });

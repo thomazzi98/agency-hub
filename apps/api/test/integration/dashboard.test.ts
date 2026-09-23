@@ -12,6 +12,7 @@ import {
 } from '../helpers/app.js';
 import { closeTestPrisma, resetDatabase, testPrisma } from '../helpers/prisma.js';
 import { withSystemScope } from '../../src/shared/tenant-scope.js';
+import { businessDayBounds } from '../../src/shared/business-day.js';
 
 const prisma = testPrisma();
 let app: FastifyInstance;
@@ -59,12 +60,10 @@ const sessionFor = (user: User) => loginAs(app, user.email, DEFAULT_TEST_PASSWOR
 /** A company with one of nearly everything, so every panel has something to show. */
 async function seedWorkload(companyId: string, responsibleUserId: string) {
   return withSystemScope(prisma, async (tx) => {
-    const now = new Date();
     // Late today rather than midday: anything already past is also overdue, so a
-    // fixed hour would make these assertions depend on the time the suite runs.
-    const lateToday = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59),
-    );
+    // fixed hour would make these assertions depend on the time the suite runs. "Today"
+    // is the agency's day (APP_TIMEZONE), the same one the endpoint measures.
+    const lateToday = new Date(businessDayBounds().startOfTomorrow.getTime() - 60 * 1000);
 
     const [today, overdue, producing] = await Promise.all([
       tx.content.create({
@@ -187,6 +186,75 @@ describe('the agency dashboard', () => {
     expect(data.todayContent).toHaveLength(1);
     expect(data.overdueContent[0].title).toBe('Post atrasado');
     expect(data.recentFiles[0].originalName).toBe('briefing.pdf');
+  });
+
+  it('counts every late item on its tile, not just the five its panel lists', async () => {
+    await withSystemScope(prisma, async (tx) => {
+      for (let index = 0; index < 7; index += 1) {
+        await tx.content.create({
+          data: {
+            companyId: world.companyA.id,
+            title: `Atrasado ${index}`,
+            scheduledAt: new Date(Date.now() - (index + 2) * DAY),
+            productionStatus: 'planned',
+          },
+        });
+        await tx.pendingRequest.create({
+          data: {
+            companyId: world.companyA.id,
+            title: `Vencida ${index}`,
+            description: 'Sem resposta.',
+            responsibleUserId: world.clientA.id,
+            status: 'open',
+            dueDate: new Date(Date.now() - (index + 2) * DAY),
+          },
+        });
+      }
+    });
+    const cookie = await sessionFor(world.managerA);
+
+    const response = await app.inject(
+      authed({ method: 'GET', url: '/api/dashboard/agency' }, cookie),
+    );
+
+    const data = response.json().data;
+    // The seed's one of each, plus seven more.
+    expect(data.counts.overdue).toBe(8);
+    expect(data.counts.requestsOverdue).toBe(8);
+    // The panels still show only the first few.
+    expect(data.overdueContent).toHaveLength(5);
+    expect(data.requestsOverdueItems).toHaveLength(5);
+  });
+
+  it("measures today in the agency's time zone, so an evening post is today's", async () => {
+    const { startOfToday, startOfTomorrow } = businessDayBounds();
+    await withSystemScope(prisma, (tx) =>
+      tx.content.createMany({
+        data: [
+          {
+            // 22:30 in São Paulo - already tomorrow in UTC, which is where it used to land.
+            companyId: world.companyA.id,
+            title: 'Horário nobre',
+            scheduledAt: new Date(startOfToday.getTime() + 22.5 * 60 * 60 * 1000),
+          },
+          {
+            companyId: world.companyA.id,
+            title: 'Madrugada de amanhã',
+            scheduledAt: new Date(startOfTomorrow.getTime() + 60 * 60 * 1000),
+          },
+        ],
+      }),
+    );
+    const cookie = await sessionFor(world.managerA);
+
+    const response = await app.inject(
+      authed({ method: 'GET', url: '/api/dashboard/agency' }, cookie),
+    );
+
+    const titles = response.json().data.todayContent.map((row: { title: string }) => row.title);
+    expect(titles).toContain('Horário nobre');
+    expect(titles).not.toContain('Madrugada de amanhã');
+    expect(response.json().data.counts.today).toBe(titles.length);
   });
 
   it('sees both companies as an agency_admin', async () => {
@@ -378,6 +446,71 @@ describe('the company dashboard', () => {
 
     expect(foreign.statusCode).toBe(absent.statusCode);
     expect(foreign.body).toBe(absent.body);
+  });
+
+  it('counts every request waiting on the reader, not just the five it lists', async () => {
+    await withSystemScope(prisma, (tx) =>
+      tx.pendingRequest.createMany({
+        data: Array.from({ length: 6 }, (_, index) => ({
+          companyId: world.companyA.id,
+          title: `Pedido ${index}`,
+          description: 'Aguardando resposta.',
+          responsibleUserId: world.clientA.id,
+          status: 'awaiting_client' as const,
+        })),
+      }),
+    );
+    const cookie = await sessionFor(world.clientA);
+
+    const response = await app.inject(
+      authed(
+        { method: 'GET', url: `/api/dashboard/company?companyId=${world.companyA.id}` },
+        cookie,
+      ),
+    );
+
+    expect(response.json().data.counts.myRequests).toBe(8);
+    expect(response.json().data.myRequests).toHaveLength(5);
+  });
+
+  it('counts campaigns the way the campaign list shows them, per role', async () => {
+    await withSystemScope(prisma, async (tx) => {
+      const account = await tx.adAccount.create({
+        data: { companyId: world.companyA.id, platform: 'meta', name: 'Conta principal' },
+      });
+      await tx.campaign.createMany({
+        data: [
+          {
+            companyId: world.companyA.id,
+            adAccountId: account.id,
+            platform: 'meta',
+            name: 'Visível',
+            visibleToClient: true,
+          },
+          {
+            companyId: world.companyA.id,
+            adAccountId: account.id,
+            platform: 'meta',
+            name: 'Interna',
+            visibleToClient: false,
+          },
+        ],
+      });
+    });
+
+    const countFor = async (user: User) => {
+      const response = await app.inject(
+        authed(
+          { method: 'GET', url: `/api/dashboard/company?companyId=${world.companyA.id}` },
+          await sessionFor(user),
+        ),
+      );
+      return response.json().data.counts.campaigns as number;
+    };
+
+    expect(await countFor(world.managerA)).toBe(2);
+    expect(await countFor(world.clientA)).toBe(1);
+    expect(await countFor(world.contributorA)).toBe(0);
   });
 
   it('shows only the reader their own outstanding requests', async () => {

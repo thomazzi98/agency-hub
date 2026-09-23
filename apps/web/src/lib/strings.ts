@@ -11,6 +11,10 @@ export const strings = {
     genericError: 'Não foi possível concluir a ação. Tente novamente.',
     networkError: 'Não foi possível falar com o servidor. Verifique sua conexão.',
     logout: 'Sair',
+    crashTitle: 'Esta tela não pôde ser exibida.',
+    crashHint:
+      'Recarregue a página. Se continuar, verifique sua conexão ou tente de novo em instantes.',
+    reload: 'Recarregar a página',
   },
   login: {
     title: 'Entrar',
@@ -31,6 +35,10 @@ export const strings = {
     submitting: 'Salvando…',
     mismatch: 'As senhas não conferem.',
     success: 'Senha alterada com sucesso.',
+    newPasswordHint: 'Pelo menos 10 caracteres.',
+    voluntaryTitle: 'Alterar senha',
+    voluntarySubtitle: 'Por segurança, as suas outras sessões serão encerradas.',
+    back: 'Voltar',
   },
   home: {
     title: 'Início',
@@ -86,6 +94,11 @@ export const strings = {
     confirmRevoke: 'Encerrar esta sessão? O dispositivo precisará entrar novamente.',
     confirmRevokeAll:
       'Encerrar todas as outras sessões? Os demais dispositivos precisarão entrar novamente.',
+    revokedCount: (count: number) =>
+      count === 1 ? '1 sessão encerrada.' : `${count} sessões encerradas.`,
+    passwordTitle: 'Senha',
+    passwordHint: 'Troque a sua senha a qualquer momento. As outras sessões serão encerradas.',
+    changePassword: 'Alterar senha',
   },
   common: {
     save: 'Salvar',
@@ -179,6 +192,10 @@ export const strings = {
     noCompaniesLeft: 'Este usuário já tem acesso a todas as empresas.',
     permissionsNote:
       'Estas permissões valem apenas para esta empresa — o mesmo usuário pode ter permissões diferentes em outra.',
+    overridesOnlyForManagers:
+      'Permissões extras (gerenciar campanhas, excluir arquivos de outros) só se aplicam a gestores da agência.',
+    overridesAdminHasAll:
+      'Administradores da agência já têm todas as permissões em todas as empresas.',
   },
   projects: {
     title: 'Projetos',
@@ -247,6 +264,16 @@ export const strings = {
     confirmCancel: 'Cancelar este envio? A parte já enviada será descartada.',
     clearFinished: 'Limpar concluídos',
     progressOf: 'Progresso de',
+    tooLarge: (name: string, max: string) =>
+      `"${name}" é maior do que o permitido (máximo de ${max} por arquivo).`,
+    typeNotAllowed: (name: string) =>
+      `"${name}" não pode ser enviado: este tipo de arquivo não é aceito.`,
+    alreadyQueued: (name: string) => `"${name}" já está na lista de envios.`,
+    partRejected: (status: number) =>
+      `O armazenamento recusou uma parte do arquivo (HTTP ${status}). Tente enviar de novo.`,
+    partUnconfirmed: 'O armazenamento não confirmou o recebimento de uma parte do arquivo.',
+    partNetworkError: 'Falha de rede ao enviar parte do arquivo.',
+    leaveWarning: 'Há envios em andamento. Se sair agora, eles serão interrompidos.',
     state: {
       waiting: 'Aguardando',
       uploading: 'Enviando',
@@ -263,6 +290,10 @@ export const strings = {
     emptyHint: 'Envie um arquivo acima ou crie uma pasta para organizar o material.',
     emptyReadOnlyHint: 'Ainda não há nada nesta pasta.',
     searchPlaceholder: 'Buscar pelo nome do arquivo',
+    searchLabel: 'Buscar arquivo pelo nome',
+    searchResults: (term: string) => `Resultados para "${term}" em todas as pastas`,
+    searchEmpty: 'Nenhum arquivo com esse nome nesta empresa.',
+    clearSearch: 'Limpar busca',
     uploadedAt: 'Enviado em',
     download: 'Baixar',
     preparingDownload: 'Preparando…',
@@ -276,6 +307,7 @@ export const strings = {
     requestDeletionHint:
       'Um administrador da agência vai analisar. Explique por que o arquivo deve ser excluído.',
     reason: 'Motivo',
+    reasonHint: 'Pelo menos 5 caracteres.',
     sendRequest: 'Enviar solicitação',
     requestSent: 'Solicitação enviada para análise.',
     showNotes: 'Notas',
@@ -307,6 +339,12 @@ export const strings = {
     statusRejected: 'Rejeitada',
     targetFile: 'Arquivo',
     targetContent: 'Conteúdo',
+    company: 'Empresa',
+    requestedBy: 'Solicitado por',
+    reviewedBy: (name: string, when: string) => `Analisado por ${name} em ${when}`,
+    targetGone: 'Este item já não existe - não há mais o que excluir.',
+    unknownTarget: 'Item removido',
+    download: 'Baixar para conferir',
   },
   calendar: {
     title: 'Calendário',
@@ -320,9 +358,12 @@ export const strings = {
     responsible: 'Responsável',
     description: 'Descrição',
     duplicate: 'Duplicar',
-    duplicatePrompt: 'Para qual data duplicar? (AAAA-MM-DD)',
+    duplicateTitle: 'Duplicar conteúdo',
+    duplicateHint: (title: string) =>
+      `Uma cópia de "${title}" será criada na data escolhida, de volta ao início da produção.`,
+    duplicateDate: 'Nova data',
+    duplicateTimeHint: (time: string) => `No mesmo horário do original: ${time}.`,
     duplicated: 'Conteúdo duplicado.',
-    invalidDate: 'Data inválida.',
     remove: 'Excluir',
     confirmRemove: 'Excluir este conteúdo? Ele sai do calendário, mas continua recuperável.',
     removed: 'Conteúdo excluído.',
@@ -423,6 +464,10 @@ export const strings = {
     edited: 'editado',
     remove: 'Excluir',
     confirmRemove: 'Excluir esta nota?',
+    you: 'Você',
+    unknownAuthor: 'Usuário removido',
+    attachment: 'Anexo',
+    attachmentRemoved: 'Arquivo excluído',
   },
   backups: {
     title: 'Backup do banco',
@@ -484,6 +529,7 @@ export const strings = {
     accountCreated: 'Conta de anúncios criada.',
     history: 'Histórico de alterações',
     historyEmpty: 'Nenhuma alteração registrada ainda.',
+    changedBy: (name: string, when: string) => `${name} · ${when}`,
     from: 'de',
     to: 'para',
     empty: 'Nenhuma campanha cadastrada.',
@@ -730,6 +776,8 @@ export const strings = {
     closed: 'Este acompanhamento foi encerrado.',
     youAreResponsible: 'Aguardando você',
     you: 'você',
+    createdBy: 'Aberto por',
+    openedAt: 'Aberto em',
     emptyHint: 'Crie um acompanhamento quando precisar de uma resposta de alguém específico.',
     replyCount: (count: number) => (count === 1 ? '1 resposta' : `${count} respostas`),
     views: {

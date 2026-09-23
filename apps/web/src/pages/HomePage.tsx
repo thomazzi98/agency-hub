@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Alert, Card, LoadingScreen, SelectField, Spinner, TextField } from '../components/ui';
+import { CompanySelect } from '../components/CompanySelect';
 import { ContentRows, FileRows, Panel, RequestRows, StatTile } from '../components/DashboardPanels';
-import { formatDateTime } from '../lib/dates';
+import { endOfDay, formatDateTime, startOfDateInput, toDateInput } from '../lib/dates';
 import {
   auditActionLabel,
   productionStatusLabel,
   strings,
   topicPriorityLabel,
 } from '../lib/strings';
-import { useCurrentUser } from '../modules/auth/session';
+import { useCurrentUser, type CurrentUser } from '../modules/auth/session';
 import { useAllCompanies } from '../modules/companies/api';
 import {
   useAgencyDashboard,
@@ -82,20 +83,30 @@ function AgencyDashboard({ currentUser }: { currentUser: { name: string } }) {
               ...statuses.map((value) => ({ value, label: productionStatusLabel(value) })),
             ]}
           />
+          {/* The chosen days are the viewer's days: a UTC boundary started "from the
+              23rd" at 21:00 on the 22nd and ended "until the 23rd" at 21:00 on it. */}
           <TextField
             label={strings.dashboard.from}
             type="date"
-            value={filters.from?.slice(0, 10) ?? ''}
+            value={filters.from ? toDateInput(new Date(filters.from)) : ''}
             onChange={(event) =>
-              set({ from: event.target.value ? `${event.target.value}T00:00:00.000Z` : undefined })
+              set({
+                from: event.target.value
+                  ? startOfDateInput(event.target.value).toISOString()
+                  : undefined,
+              })
             }
           />
           <TextField
             label={strings.dashboard.to}
             type="date"
-            value={filters.to?.slice(0, 10) ?? ''}
+            value={filters.to ? toDateInput(new Date(filters.to)) : ''}
             onChange={(event) =>
-              set({ to: event.target.value ? `${event.target.value}T23:59:59.999Z` : undefined })
+              set({
+                to: event.target.value
+                  ? endOfDay(startOfDateInput(event.target.value)).toISOString()
+                  : undefined,
+              })
             }
           />
           <SelectField
@@ -191,7 +202,7 @@ function AgencyDashboard({ currentUser }: { currentUser: { name: string } }) {
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Panel
               title={strings.dashboard.overdueContent}
               count={dashboard.data.overdueContent.length}
@@ -253,18 +264,46 @@ function AgencyDashboard({ currentUser }: { currentUser: { name: string } }) {
 function CompanyDashboard({
   companyId,
   currentUser,
+  companyPicker,
 }: {
   companyId: string;
-  currentUser: { name: string };
+  currentUser: { name: string; role: string };
+  /** Offered only to someone who belongs to more than one company. */
+  companyPicker?: ReactNode;
 }) {
-  const dashboard = useCompanyDashboard(companyId);
+  const dashboard = useCompanyDashboard(companyId || undefined);
 
-  if (dashboard.isPending) return <LoadingScreen />;
+  const heading = (
+    <div>
+      <h1 className="text-xl font-bold text-slate-900">{strings.home.title}</h1>
+      {/* Who you are signed in as, then what is waiting. On a shared machine the
+          first line is the one that matters. */}
+      <p className="text-sm text-slate-600">{strings.home.welcome(currentUser.name)}</p>
+      <p className="text-sm text-slate-500">{strings.dashboard.question}</p>
+    </div>
+  );
+
+  if (!companyId || dashboard.isPending) {
+    return (
+      <div className="flex flex-col gap-4">
+        {heading}
+        {companyPicker}
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Spinner className="h-4 w-4" />
+          {strings.app.loading}
+        </div>
+      </div>
+    );
+  }
   if (dashboard.error) {
     return (
-      <Alert tone="error" onRetry={() => void dashboard.refetch()}>
-        {dashboard.error.message}
-      </Alert>
+      <div className="flex flex-col gap-4">
+        {heading}
+        {companyPicker}
+        <Alert tone="error" onRetry={() => void dashboard.refetch()}>
+          {dashboard.error.message}
+        </Alert>
+      </div>
     );
   }
   if (!dashboard.data) return null;
@@ -273,18 +312,13 @@ function CompanyDashboard({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">{strings.home.title}</h1>
-        {/* Who you are signed in as, then what is waiting. On a shared machine the
-            first line is the one that matters. */}
-        <p className="text-sm text-slate-600">{strings.home.welcome(currentUser.name)}</p>
-        <p className="text-sm text-slate-500">{strings.dashboard.question}</p>
-      </div>
+      {heading}
+      {companyPicker}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <StatTile
           label={strings.dashboard.myRequests}
-          value={dashboard.data.myRequests.length}
+          value={counts.myRequests}
           tone="warning"
           to="/pendencias"
         />
@@ -313,10 +347,13 @@ function CompanyDashboard({
           value={counts.pendingPublications}
           to="/publicacoes"
         />
-        <StatTile label={strings.campaigns.title} value={counts.campaigns} to="/campanhas" />
+        {/* Campaigns are the agency's and the client's; a contributor sees none. */}
+        {currentUser.role !== 'contributor' && (
+          <StatTile label={strings.campaigns.title} value={counts.campaigns} to="/campanhas" />
+        )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel
           title={strings.dashboard.myRequests}
           count={dashboard.data.myRequests.length}
@@ -345,6 +382,41 @@ function CompanyDashboard({
   );
 }
 
+/**
+ * Any role may belong to several companies (06-permissions-and-authorization.md), so a
+ * client or contributor in more than one gets to choose which one this is about - it
+ * used to show the first membership and offer no way to see the others.
+ */
+function ClientHome({ currentUser }: { currentUser: CurrentUser }) {
+  const memberships = currentUser.memberships;
+  const [chosen, setChosen] = useState('');
+
+  if (memberships.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-xl font-bold text-slate-900">{strings.home.title}</h1>
+        <Alert tone="info">{strings.dashboard.noCompany}</Alert>
+      </div>
+    );
+  }
+
+  if (memberships.length === 1) {
+    return <CompanyDashboard companyId={memberships[0]!.companyId} currentUser={currentUser} />;
+  }
+
+  return (
+    <CompanyDashboard
+      companyId={chosen}
+      currentUser={currentUser}
+      companyPicker={
+        <Card>
+          <CompanySelect value={chosen} onChange={setChosen} />
+        </Card>
+      }
+    />
+  );
+}
+
 export default function HomePage() {
   const { data: currentUser, isPending } = useCurrentUser();
 
@@ -356,15 +428,5 @@ export default function HomePage() {
     return <AgencyDashboard currentUser={currentUser} />;
   }
 
-  const companyId = currentUser.memberships[0]?.companyId;
-  if (!companyId) {
-    return (
-      <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-bold text-slate-900">{strings.home.title}</h1>
-        <Alert tone="info">{strings.dashboard.noCompany}</Alert>
-      </div>
-    );
-  }
-
-  return <CompanyDashboard companyId={companyId} currentUser={currentUser} />;
+  return <ClientHome currentUser={currentUser} />;
 }

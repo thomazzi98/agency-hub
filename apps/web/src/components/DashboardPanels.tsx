@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Card } from './ui';
-import { formatDate, formatDateTime } from '../lib/dates';
+import { formatDateOnly, formatDateTime } from '../lib/dates';
 import {
   contentTypeLabel,
   fileStatusLabel,
@@ -152,12 +152,12 @@ export function RequestRows({ items }: { items: DashboardRequestCard[] }) {
           <div className="min-w-0">
             <Link
               to={`/pendencias/${item.id}`}
-              className="truncate text-sm font-medium text-slate-900 underline-offset-2 hover:underline"
+              className="block truncate text-sm font-medium text-slate-900 underline-offset-2 hover:underline"
             >
               {item.title}
             </Link>
             <p className="text-xs text-slate-500">
-              {item.dueDate ? formatDate(item.dueDate) : strings.pendingRequests.noDueDate}
+              {item.dueDate ? formatDateOnly(item.dueDate) : strings.pendingRequests.noDueDate}
             </p>
           </div>
           <Badge tone="warning">{pendingRequestStatusLabel(item.status)}</Badge>

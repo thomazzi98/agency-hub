@@ -4,6 +4,15 @@ const booleanish = z
   .enum(['true', 'false', '1', '0'])
   .transform((value) => value === 'true' || value === '1');
 
+function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -13,6 +22,18 @@ const envSchema = z
     // Comma-separated list of allowed browser origins. Empty disables CORS entirely,
     // which is correct when the SPA is served from the same origin behind Caddy.
     CORS_ORIGIN: z.string().optional(),
+
+    /**
+     * The zone "today", "overdue" and "due on" are measured in. The agency works on
+     * Brazilian time, and a UTC day ends at 21:00 there - which moved every prime-time
+     * post out of the "today" panel and made deadlines lapse three hours early.
+     */
+    APP_TIMEZONE: z
+      .string()
+      .optional()
+      // "" is unset too: the compose files hand optional settings over as `${VAR:-}`.
+      .transform((value) => value || 'America/Sao_Paulo')
+      .refine(isValidTimeZone, { message: 'must be an IANA time zone such as America/Sao_Paulo' }),
 
     // Argon2id — OWASP minimum, tunable to VPS capacity (ADR-0009).
     PASSWORD_PEPPER: z.string().min(16),

@@ -1,5 +1,6 @@
 import Uppy from '@uppy/core';
 import AwsS3 from '@uppy/aws-s3';
+import { strings } from '../../lib/strings';
 import {
   abortUploadSession,
   completeUploadSession,
@@ -112,22 +113,24 @@ function uploadPartBytes(options: {
       reject(abortError());
     });
 
+    // These messages reach the upload row as they are, so they are the person's
+    // language, not the storage provider's.
     request.addEventListener('error', () => {
       signal?.removeEventListener('abort', onAbort);
-      reject(retryableError('Falha de rede ao enviar parte do arquivo.', request));
+      reject(retryableError(strings.uploads.partNetworkError, request));
     });
 
     request.addEventListener('load', () => {
       signal?.removeEventListener('abort', onAbort);
 
       if (request.status < 200 || request.status >= 300) {
-        reject(retryableError(`Storage rejected the part (HTTP ${request.status}).`, request));
+        reject(retryableError(strings.uploads.partRejected(request.status), request));
         return;
       }
 
       const etag = request.getResponseHeader('ETag');
       if (!etag) {
-        reject(new Error('Storage did not return an ETag for the part.'));
+        reject(new Error(strings.uploads.partUnconfirmed));
         return;
       }
 

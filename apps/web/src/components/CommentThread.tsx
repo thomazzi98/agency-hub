@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Card, Spinner, TextAreaField } from './ui';
+import { formatDateTime } from '../lib/dates';
 import { strings } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
 import {
@@ -7,12 +8,51 @@ import {
   useCreateComment,
   useDeleteComment,
   useUpdateComment,
+  type Comment,
   type CommentTarget,
 } from '../modules/comments/api';
+import { startDownload } from '../modules/files/api';
+import { formatBytes } from '../modules/uploads/api';
 
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(
-    new Date(value),
+/**
+ * The file a comment carried. A pending request answered "segue o material" is only
+ * answered if the material can be opened from the answer - it used to be linked in the
+ * database and shown nowhere.
+ */
+function Attachment({
+  attachment,
+  onError,
+}: {
+  attachment: NonNullable<Comment['attachment']>;
+  onError: (message: string) => void;
+}) {
+  const [downloading, setDownloading] = useState(false);
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+      <span className="min-w-0 truncate text-sm text-slate-700">
+        {`${strings.comments.attachment}: ${attachment.originalName} · ${formatBytes(attachment.sizeBytes)}`}
+      </span>
+      {attachment.removed ? (
+        <span className="text-xs text-slate-500">{strings.comments.attachmentRemoved}</span>
+      ) : (
+        <Button
+          variant="secondary"
+          isLoading={downloading}
+          loadingLabel={strings.files.preparingDownload}
+          onClick={() => {
+            setDownloading(true);
+            startDownload(attachment.id)
+              .catch((error: unknown) =>
+                onError(error instanceof Error ? error.message : strings.app.genericError),
+              )
+              .finally(() => setDownloading(false));
+          }}
+        >
+          {strings.files.download}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -29,6 +69,7 @@ export function CommentThread({ target }: { target: CommentTarget }) {
 
   const [body, setBody] = useState('');
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const error = comments.error ?? create.error ?? update.error ?? remove.error;
   const rows = comments.data?.rows ?? [];
@@ -49,6 +90,7 @@ export function CommentThread({ target }: { target: CommentTarget }) {
       <h2 className="text-base font-semibold text-slate-900">{strings.comments.title}</h2>
 
       {error && <Alert tone="error">{error.message}</Alert>}
+      {downloadError && <Alert tone="error">{downloadError}</Alert>}
 
       {comments.isPending ? (
         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -69,6 +111,7 @@ export function CommentThread({ target }: { target: CommentTarget }) {
                     className="flex flex-col gap-2"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (update.isPending || !editing.body.trim()) return;
                       update.mutate(
                         { id: comment.id, body: editing.body.trim() },
                         { onSuccess: () => setEditing(null) },
@@ -78,11 +121,16 @@ export function CommentThread({ target }: { target: CommentTarget }) {
                     <TextAreaField
                       label={strings.comments.body}
                       rows={3}
+                      maxLength={5000}
                       value={editing.body}
                       onChange={(event) => setEditing({ id: comment.id, body: event.target.value })}
                     />
                     <div className="flex gap-2">
-                      <Button type="submit" isLoading={update.isPending}>
+                      <Button
+                        type="submit"
+                        isLoading={update.isPending}
+                        disabled={!editing.body.trim()}
+                      >
                         {strings.common.save}
                       </Button>
                       <Button type="button" variant="secondary" onClick={() => setEditing(null)}>
@@ -92,7 +140,17 @@ export function CommentThread({ target }: { target: CommentTarget }) {
                   </form>
                 ) : (
                   <>
-                    <p className="text-sm whitespace-pre-wrap text-slate-800">{comment.body}</p>
+                    <p className="text-xs font-semibold text-slate-700">
+                      {isMine
+                        ? strings.comments.you
+                        : (comment.author?.name ?? strings.comments.unknownAuthor)}
+                    </p>
+                    <p className="mt-1 text-sm whitespace-pre-wrap text-slate-800">
+                      {comment.body}
+                    </p>
+                    {comment.attachment && (
+                      <Attachment attachment={comment.attachment} onError={setDownloadError} />
+                    )}
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs text-slate-500">
                         {formatDateTime(comment.createdAt)}
