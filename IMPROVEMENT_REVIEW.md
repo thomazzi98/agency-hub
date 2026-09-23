@@ -214,7 +214,8 @@ Todos executados nesta máquina, no estado final do código, salvo indicação.
 | `Caddyfile` (cache do shell) combinado com a mudança de `main` feita durante a revisão (sites de outros projetos no mesmo Caddy) | `caddy validate` e `caddy adapt` na imagem `caddy:2-alpine`, a mesma do container web | **PASS** | As duas regras presentes na configuração final |
 | E2E contra o site publicado | `npm run test:e2e:online` | **NOT RUN** | Precisa de um admin descartável no VPS; não rodado para não criar dados em produção. Rodar depois do deploy (runbook em `docs/deployment.md`) |
 | Celular físico (push recebido, upload grande interrompido no 4G) | — | **NOT AVAILABLE** | Exige um aparelho; pendência já registrada desde o go-live |
-| CI (GitHub Actions) | pull request | {{CI}} | |
+| CI (GitHub Actions), 1ª execução | pull request #1, commit `50e2926` | **FAIL** (`build-and-test`: 1 de 417) | Asserção dependente de tempo num teste novo meu, não um defeito do código: corrigida em `8c29c66`. `e2e` e `validate-docker` passaram |
+| CI (GitHub Actions), 2ª execução | pull request #1, commit `8c29c66` | **PASS** (`build-and-test`, `e2e`, `validate-docker`) | |
 
 ### Fluxos principais cobertos
 
@@ -237,14 +238,14 @@ Todos executados nesta máquina, no estado final do código, salvo indicação.
 | Item | Valor |
 |---|---|
 | Branch | `improvement-review`, sobre `origin/main` (`9412fd0` — a mudança de deploy feita em `main` durante a revisão, integrada sem conflito) |
-| Commit das mudanças | {{COMMIT}} — "Improvement review: fix what volume, time zones, races and phones exposed" |
+| Commits | `50e2926` "Improvement review: fix what volume, time zones, races and phones exposed" (todas as mudanças); `8c29c66` "Auth test: pin the burst lockout by its invariant, not by timing" (ajuste pedido pelo CI); e o commit que completa esta seção com os dados de Git e CI |
 | Arquivos | 88 alterados e 9 novos (8 de código e testes, mais este relatório); nenhuma migração |
 | Deixados de fora de propósito | `.claude/` (configuração local dos servidores de validação), `e2e/.cache/` (roteiro de capturas e detector de rolagem lateral), `test-results/` — todos fora do git |
 | Segredos | Diff e arquivos novos varridos (chaves privadas, tokens, URLs com senha, variáveis sensíveis): só dados sintéticos de teste; nenhum `.env`, log, dump ou build |
-| Push | {{PUSH}} |
-| Pull request | {{PR}} |
-| CI | {{CI}} |
-| Working tree | {{TREE}} |
+| Push | `origin/improvement-review`, em dia com o local |
+| Pull request | [#1](https://github.com/thomazzi98/agency-hub/pull/1) — base `main`, sem conflitos |
+| CI | 1ª execução (`50e2926`, run 35897159548): `e2e` e `validate-docker` **PASS**; `build-and-test` **FAIL** — 1 dos 417 testes, a asserção do teste novo de tentativas simultâneas dependia de tempo (8 contadas; no CI uma chegou depois do bloqueio e foi recusada sem contar, que é o comportamento correto). Corrigida em `8c29c66` para afirmar o invariante. 2ª execução (`8c29c66`, run 35898686864): **PASS** (`build-and-test`, `e2e`, `validate-docker`) |
+| Working tree | Limpo depois do push |
 | Merge em `main` | **Não feito**: publica em produção automaticamente e aguarda a sua confirmação |
 
 ---
@@ -302,5 +303,5 @@ Deixados de fora de propósito — documentados para decisão futura.
 - [x] Revisão visual e verificação de rolagem lateral em desktop e celular
 - [x] Documentação atualizada: `docs/PROGRESS.md`, `docs/deployment.md` (`APP_TIMEZONE`), `.env.example`
 - [x] Commit sem segredos, `.env`, logs, dumps ou builds
-- [x] Branch enviado e pull request aberto; CI: {{CI}}
+- [x] Branch enviado e pull request aberto; CI: **PASS** (`build-and-test`, `e2e`, `validate-docker`) no commit `8c29c66`
 - [ ] Merge em `main`, que publica em produção — aguardando sua confirmação
