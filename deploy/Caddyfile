@@ -61,3 +61,9 @@ http:// {
 		file_server
 	}
 }
+
+# Other projects on this host. This Caddy is the one process that can hold ports 80
+# and 443, so each of them drops a single site file here: a block for its own
+# hostname that proxies to its container over the external `edge` network. They get
+# the same automatic certificates, and an empty directory imports nothing.
+import /etc/caddy/sites/*.caddy

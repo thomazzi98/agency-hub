@@ -46,6 +46,11 @@ cd "$APP_DIR" || fail "APP_DIR $APP_DIR does not exist. Provision the VPS first 
 command -v docker >/dev/null || fail "docker is not installed."
 docker compose version >/dev/null || fail "docker compose v2 is not available."
 
+# The network other projects on this host join so this Caddy can serve them
+# (deploy/Caddyfile). The compose file declares it external, so it has to exist
+# before any compose command runs; creating it is idempotent.
+docker network inspect edge >/dev/null 2>&1 || docker network create edge >/dev/null
+
 export API_IMAGE="${REGISTRY}/${IMAGE_REPO}-api:${TAG}"
 export WEB_IMAGE="${REGISTRY}/${IMAGE_REPO}-web:${TAG}"
 

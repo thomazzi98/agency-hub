@@ -126,9 +126,21 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      # Other projects' site files, imported by deploy/Caddyfile.
+      - /opt/edge/sites:/etc/caddy/sites:ro
+    networks:
+      - default
+      # Shared with those projects, so their site files can reach their containers.
+      - edge
     depends_on:
       api:
         condition: service_healthy
+
+networks:
+  # Created by scripts/deploy.sh. External so that no single project's
+  # `docker compose down` can take it away from the others.
+  edge:
+    external: true
 
 volumes:
   postgres_data:

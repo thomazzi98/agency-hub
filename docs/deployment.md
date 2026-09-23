@@ -97,6 +97,22 @@ It prints a temporary password **exactly once**; the account must change it at f
 sign-in. Run it through the `api` service, not `migrate`: the seed needs the full
 application environment, which only `api` carries.
 
+### Other projects on this host
+
+`web` is the only thing that can listen on ports 80 and 443, so another project on
+the VPS is served through it rather than beside it. It drops one site file into
+`/opt/edge/sites` - a block for its own hostname that proxies to its container on
+the external `edge` network - and reloads Caddy:
+
+```bash
+docker exec agency-hub-web-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+Its certificate is obtained and renewed the same way as this site's. A file Caddy
+cannot parse would stop `web` from starting on the next deploy, so validate one
+before it goes in; the reload itself is atomic and keeps the running configuration
+if it fails.
+
 ## GitHub Secrets
 
 Set under **Settings → Secrets and variables → Actions**. The `production`
