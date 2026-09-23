@@ -66,6 +66,8 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       BACKUP_DIRECTORY: /var/agency-hub/backups
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      # The zone "today" and "overdue" are measured in; empty means America/Sao_Paulo.
+      APP_TIMEZONE: ${APP_TIMEZONE:-}
     volumes:
       - backups:/var/agency-hub/backups
     healthcheck:

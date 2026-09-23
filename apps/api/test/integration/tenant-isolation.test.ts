@@ -164,6 +164,28 @@ describe('company visibility', () => {
     const after = await app.inject(authed({ method: 'GET', url: '/api/companies' }, freshCookie));
     expect(after.json().data).toEqual([]);
   });
+
+  it('gives access to another company at once, without signing the person out', async () => {
+    const cookie = await sessionFor(world.managerA);
+    const adminCookie = await sessionFor(world.admin);
+
+    const granted = await app.inject(
+      authed(
+        {
+          method: 'POST',
+          url: '/api/memberships',
+          payload: { userId: world.managerA.id, companyId: world.companyB.id },
+        },
+        adminCookie,
+      ),
+    );
+    expect(granted.statusCode).toBe(201);
+
+    // The same session - an upload in flight on it survives - already sees the new company.
+    const after = await app.inject(authed({ method: 'GET', url: '/api/companies' }, cookie));
+    expect(after.statusCode).toBe(200);
+    expect(after.json().data).toHaveLength(2);
+  });
 });
 
 describe('company management permissions', () => {

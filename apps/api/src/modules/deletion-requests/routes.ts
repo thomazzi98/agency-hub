@@ -5,7 +5,11 @@ import { conflict, notFound } from '../../shared/errors.js';
 import { AuditAction, writeAuditLog } from '../../shared/audit.js';
 import { notifyDeletionRequested, notifyDeletionReviewed } from '../notifications/events.js';
 import { clientIp } from '../../shared/request-context.js';
-import { authorizedCompanyIds, requireAgencyAdmin } from '../../shared/permissions.js';
+import {
+  authorizedCompanyIds,
+  requireAgencyAdmin,
+  requireCompanyAccess,
+} from '../../shared/permissions.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
 
@@ -41,6 +45,58 @@ const requestSelect = {
   reviewNotes: true,
   createdAt: true,
 } as const;
+
+/**
+ * What a reviewer has to see before approving an irreversible-looking act: which file or
+ * content, in which company, asked for by whom. Without it the queue offered "Arquivo"
+ * and a reason, and an admin approved deletions blind.
+ */
+const listSelect = {
+  ...requestSelect,
+  company: { select: { name: true } },
+  requestedBy: { select: { name: true } },
+  reviewedBy: { select: { name: true } },
+} as const;
+
+type ListedRequest = { targetType: 'file' | 'content'; targetId: string } & Record<string, unknown>;
+
+/**
+ * The target is polymorphic, so it is resolved in one query per type for the whole
+ * page rather than one per row. A target already gone - its uploader removed it while
+ * the request waited - is reported as such instead of as a blank.
+ */
+async function withTargets<T extends ListedRequest>(tx: ScopedDb, rows: T[]) {
+  const idsOf = (type: 'file' | 'content') =>
+    rows.filter((row) => row.targetType === type).map((row) => row.targetId);
+
+  const [files, contents] = await Promise.all([
+    tx.file.findMany({
+      where: { id: { in: idsOf('file') } },
+      select: { id: true, originalName: true, deletedAt: true },
+    }),
+    tx.content.findMany({
+      where: { id: { in: idsOf('content') } },
+      select: { id: true, title: true, deletedAt: true },
+    }),
+  ]);
+
+  const labels = new Map<string, { label: string; removed: boolean }>();
+  for (const file of files) {
+    labels.set(file.id, { label: file.originalName, removed: file.deletedAt !== null });
+  }
+  for (const content of contents) {
+    labels.set(content.id, { label: content.title, removed: content.deletedAt !== null });
+  }
+
+  return rows.map((row) => {
+    const target = labels.get(row.targetId);
+    return {
+      ...row,
+      targetLabel: target?.label ?? null,
+      targetRemoved: target?.removed ?? true,
+    };
+  });
+}
 
 /**
  * Resolves the target and, with it, the company the request belongs to. The company is
@@ -84,6 +140,9 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
     tenantScoped(async ({ tx, actor, request }) => {
       const query = parseInput(listQuerySchema, request.query);
       const companyIds = authorizedCompanyIds(actor);
+      // The requested company picks among the actor's own, never widens them
+      // (06-permissions-and-authorization.md#preventing-access-by-manipulating-ids-or-urls-anti-idor).
+      if (query.companyId) requireCompanyAccess(actor, query.companyId);
 
       const where = {
         ...(query.companyId
@@ -97,14 +156,15 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
       const [rows, total] = await Promise.all([
         tx.deletionRequest.findMany({
           where,
-          select: requestSelect,
-          orderBy: { createdAt: 'desc' },
+          select: listSelect,
+          // The id breaks ties, so paging never shows a row twice or skips one.
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.deletionRequest.count({ where }),
       ]);
 
-      return paginated(rows, total, query);
+      return paginated(await withTargets(tx, rows), total, query);
     }),
   );
 
@@ -188,14 +248,25 @@ export async function deletionRequestRoutes(app: FastifyInstance): Promise<void>
           throw conflict('already_reviewed', 'Esta solicitação já foi analisada.');
         }
 
-        const reviewed = await tx.deletionRequest.update({
-          where: { id: params.id },
+        // Claimed with the status in the WHERE, not decided from the read above: two
+        // admins pressing at once would otherwise both pass that check, the second
+        // overwriting the first's decision and notifying the requester twice. The row
+        // lock makes the second wait, re-check, and find it no longer pending.
+        const claimed = await tx.deletionRequest.updateMany({
+          where: { id: params.id, status: 'pending' },
           data: {
             status: decision,
             reviewedById: actor.userId,
             reviewedAt: new Date(),
             reviewNotes: body.reviewNotes ?? null,
           },
+        });
+        if (claimed.count === 0) {
+          throw conflict('already_reviewed', 'Esta solicitação já foi analisada.');
+        }
+
+        const reviewed = await tx.deletionRequest.findFirstOrThrow({
+          where: { id: params.id },
           select: requestSelect,
         });
 

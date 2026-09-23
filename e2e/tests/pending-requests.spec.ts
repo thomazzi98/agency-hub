@@ -53,7 +53,7 @@ test.describe('pending requests', () => {
     await expect(page.getByRole('status').first()).toHaveText('Acesso concedido.');
 
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     await page.getByRole('button', { name: 'Nova pendência' }).click();
@@ -61,17 +61,30 @@ test.describe('pending requests', () => {
     await dialog.getByLabel('Título').fill(title);
     await dialog.getByLabel('Descrição').fill('Precisamos do vídeo bruto desta semana.');
     await dialog.getByLabel('Responsável').selectOption({ label: recipient.name });
+    const due = new Date();
+    due.setDate(due.getDate() + 3);
+    const pad = (part: number) => String(part).padStart(2, '0');
+    await dialog
+      .getByLabel('Prazo')
+      .fill(`${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`);
     await dialog.getByRole('button', { name: 'Criar pendência' }).click();
 
     // The page opens on "Esperando por mim", and this one is addressed to someone else.
     await page.getByRole('button', { name: 'Todas' }).click();
     await expect(page.getByRole('link', { name: title })).toBeVisible();
+    // The deadline reads as the day that was chosen: a date-only value shown through
+    // the browser's zone used to come out one day early anywhere west of UTC.
+    await expect(
+      page.getByText(
+        `Prazo: ${pad(due.getDate())}/${pad(due.getMonth() + 1)}/${due.getFullYear()}`,
+      ),
+    ).toBeVisible();
     await signOut(page);
 
     // The recipient's side: it is waiting on them, and they answer with a file.
     await signIn(page, recipient.email);
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
 
     // "Esperando por mim" is the view this page opens on.
@@ -101,7 +114,7 @@ test.describe('pending requests', () => {
     // The agency sees the answer and closes it.
     await signIn(page, admin(testInfo).email);
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByRole('button', { name: 'Todas' }).click();
     await page.getByRole('link', { name: title }).click();
@@ -109,6 +122,14 @@ test.describe('pending requests', () => {
     // The list has a "Situação" filter of its own, so wait for the detail to render
     // before reaching for the one that actually changes the request.
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+    // The answer arrives with who wrote it and the file it carried, which can be opened
+    // from the thread itself - the file used to be linked and shown nowhere.
+    const answer = page.getByRole('listitem').filter({ hasText: 'Segue o material solicitado.' });
+    await expect(answer.getByText(recipient.name)).toBeVisible();
+    await expect(answer.getByText(/Anexo: material\.txt/)).toBeVisible();
+    await expect(answer.getByRole('button', { name: 'Baixar' })).toBeVisible();
+
     await page.getByLabel('Situação').selectOption('completed');
     await expect(page.getByText('Pendência atualizada.')).toBeVisible();
 

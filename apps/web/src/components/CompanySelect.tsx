@@ -19,7 +19,15 @@ export function CompanySelect({
 }) {
   const companies = useAllCompanies();
   // Memoized so the effect below does not see a new array identity every render.
-  const rows = useMemo(() => companies.data?.rows ?? [], [companies.data]);
+  // Active companies first: an archived client is kept reachable - its files and history
+  // still matter - but it is neither the default nor mixed in among the current ones.
+  const rows = useMemo(() => {
+    const all = companies.data?.rows ?? [];
+    return [
+      ...all.filter((company) => company.status === 'active'),
+      ...all.filter((company) => company.status !== 'active'),
+    ];
+  }, [companies.data]);
 
   /**
    * The default is chosen once, and never after a person has chosen for themselves.
@@ -56,7 +64,13 @@ export function CompanySelect({
       label={label}
       value={value}
       onChange={(event) => choose(event.target.value)}
-      options={rows.map((company) => ({ value: company.id, label: company.name }))}
+      options={rows.map((company) => ({
+        value: company.id,
+        label:
+          company.status === 'active'
+            ? company.name
+            : `${company.name} (${strings.companies.statusArchived.toLowerCase()})`,
+      }))}
     />
   );
 }

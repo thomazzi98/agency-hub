@@ -55,14 +55,42 @@ export function useCompanies(params: CompanyListParams) {
   });
 }
 
+/** The server's cap on a page (apps/api/src/shared/pagination.ts). */
+const MAX_PAGE_SIZE = 100;
+/** A backstop against a runaway loop, far past any real agency's client list. */
+const MAX_PAGES = 50;
+
 /**
  * Every company the actor can reach, for the selectors that must offer all of them.
- * A paginated list would silently hide anything past the first page — an agency with
- * more clients than one page would simply not be able to pick some of them. 100 is the
- * server-enforced maximum; past that a searchable picker is the right answer.
+ * A single page would silently hide the rest: archived clients count towards it, and an
+ * agency past a hundred could simply not pick some of its companies on any screen. So
+ * the first page says how many there are and the others are fetched alongside.
  */
 export function useAllCompanies() {
-  return useCompanies({ page: 1, status: 'all', pageSize: 100 });
+  return useQuery({
+    queryKey: [...companiesKey, 'all'],
+    queryFn: async () => {
+      const page = (number: number) =>
+        apiEnvelope<Company[]>(
+          `/companies${queryString({ page: number, pageSize: MAX_PAGE_SIZE, status: 'all' })}`,
+        );
+
+      const first = await page(1);
+      const total = first.meta?.total ?? first.data.length;
+      const pageCount = Math.min(Math.ceil(total / MAX_PAGE_SIZE), MAX_PAGES);
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(pageCount - 1, 0) }, (_, index) => page(index + 2)),
+      );
+
+      // A company created between two of the requests shifts the pages under them.
+      const byId = new Map<string, Company>();
+      for (const envelope of [first, ...rest]) {
+        for (const company of envelope.data) byId.set(company.id, company);
+      }
+      const rows = [...byId.values()];
+      return { rows, meta: { page: 1, pageSize: rows.length, total } satisfies PageMeta };
+    },
+  });
 }
 
 export function useCompany(id: string | undefined) {

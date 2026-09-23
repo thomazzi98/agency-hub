@@ -62,6 +62,7 @@ type SessionRow = {
   originalName: string;
   mimeType: string;
   declaredSizeBytes: bigint;
+  maxAllowedSizeBytes: bigint;
   partSizeBytes: number;
   providerUploadId: string;
   status: 'pending' | 'in_progress' | 'completed' | 'aborted' | 'expired';
@@ -78,6 +79,7 @@ const sessionSelect = {
   originalName: true,
   mimeType: true,
   declaredSizeBytes: true,
+  maxAllowedSizeBytes: true,
   partSizeBytes: true,
   providerUploadId: true,
   status: true,
@@ -442,6 +444,43 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
         throw unprocessable(
           'upload_incomplete',
           'O envio ainda não está completo. Retome o envio antes de finalizar.',
+        );
+      }
+
+      // The size policy ran against the size the browser *declared*. A presigned part
+      // URL does not bind the length of its body, so the bytes actually stored are
+      // checked too - from the provider's own part list, before anything is assembled.
+      // Without this, declaring a small file and sending a huge one got past the
+      // configured maximum (07-upload-architecture.md, "verify object (size/etag)").
+      const committedBytes = committed.reduce((total, part) => total + part.sizeBytes, 0);
+      if (committedBytes > Number(session.maxAllowedSizeBytes)) {
+        await abortMultipartUpload({
+          storageKey: session.storageKey,
+          providerUploadId: session.providerUploadId,
+        });
+        await runScoped(async (tx) => {
+          await tx.uploadSession.updateMany({
+            where: { id: session.id, status: { in: ['pending', 'in_progress'] } },
+            data: { status: 'aborted', lastActivityAt: new Date() },
+          });
+          await tx.uploadPart.deleteMany({ where: { uploadSessionId: session.id } });
+          await writeAuditLog(tx, {
+            actorId: actor.userId,
+            companyId: session.companyId,
+            action: AuditAction.UploadAborted,
+            entityType: 'upload_session',
+            entityId: session.id,
+            ipAddress: clientIp(request),
+            metadata: {
+              reason: 'size_exceeded',
+              committedBytes,
+              declaredBytes: Number(session.declaredSizeBytes),
+            },
+          });
+        });
+        throw unprocessable(
+          'file_too_large',
+          'O arquivo enviado excede o tamanho máximo permitido. O envio foi cancelado.',
         );
       }
 

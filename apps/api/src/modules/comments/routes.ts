@@ -44,7 +44,38 @@ const commentSelect = {
   attachmentFileId: true,
   createdAt: true,
   updatedAt: true,
+  // A thread is unreadable without knowing who said what, and a reply that carries a
+  // file (a pending request answered with the material) is only useful if the file
+  // can be seen and opened from the thread itself.
+  author: { select: { id: true, name: true } },
+  attachment: { select: { id: true, originalName: true, sizeBytes: true, deletedAt: true } },
 } as const;
+
+type CommentRow = {
+  attachment: {
+    id: string;
+    originalName: string;
+    sizeBytes: bigint;
+    deletedAt: Date | null;
+  } | null;
+} & Record<string, unknown>;
+
+/** JSON has no BigInt; a removed attachment is reported as gone rather than offered. */
+function serializeComment<T extends CommentRow>(comment: T) {
+  const { attachment, ...rest } = comment;
+  return {
+    ...rest,
+    attachment:
+      attachment === null
+        ? null
+        : {
+            id: attachment.id,
+            originalName: attachment.originalName,
+            sizeBytes: Number(attachment.sizeBytes),
+            removed: attachment.deletedAt !== null,
+          },
+  };
+}
 
 /**
  * A comment's company comes from the row it is attached to, resolved inside the
@@ -135,13 +166,13 @@ export async function commentRoutes(app: FastifyInstance): Promise<void> {
         tx.comment.findMany({
           where,
           select: commentSelect,
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.comment.count({ where }),
       ]);
 
-      return paginated(rows, total, query);
+      return paginated(rows.map(serializeComment), total, query);
     }),
   );
 
@@ -198,7 +229,7 @@ export async function commentRoutes(app: FastifyInstance): Promise<void> {
       });
 
       reply.code(201);
-      return { data: comment };
+      return { data: serializeComment(comment) };
     }),
   );
 
@@ -240,7 +271,7 @@ export async function commentRoutes(app: FastifyInstance): Promise<void> {
         ipAddress: clientIp(request),
       });
 
-      return { data: comment };
+      return { data: serializeComment(comment) };
     }),
   );
 

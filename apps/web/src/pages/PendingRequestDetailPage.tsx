@@ -11,7 +11,7 @@ import {
   SelectField,
   TextAreaField,
 } from '../components/ui';
-import { formatDate, formatDateTime } from '../lib/dates';
+import { formatDateOnly, formatDateTime } from '../lib/dates';
 import { pendingRequestTone } from '../lib/tones';
 import { pendingRequestStatusLabel, strings, topicPriorityLabel } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
@@ -84,7 +84,7 @@ export default function PendingRequestDetailPage() {
 
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h1 className="text-lg font-bold text-slate-900">{item.title}</h1>
+          <h1 className="min-w-0 text-lg font-bold text-slate-900">{item.title}</h1>
           <div className="flex flex-wrap gap-1">
             {item.isOverdue && <Badge tone="danger">{strings.pendingRequests.overdue}</Badge>}
             <Badge tone={pendingRequestTone(item)}>{pendingRequestStatusLabel(item.status)}</Badge>
@@ -94,10 +94,25 @@ export default function PendingRequestDetailPage() {
         <p className="text-sm whitespace-pre-wrap text-slate-700">{item.description}</p>
 
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          {/* Who it is waiting on, and who asked - the two people it is between. */}
+          <div>
+            <dt className="text-xs text-slate-500">{strings.pendingRequests.responsible}</dt>
+            <dd className="text-slate-900">
+              {item.isMine ? strings.comments.you : item.responsibleUser.name}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">{strings.pendingRequests.openedBy}</dt>
+            <dd className="text-slate-900">
+              {isCreator
+                ? strings.comments.you
+                : (item.createdBy?.name ?? strings.comments.unknownAuthor)}
+            </dd>
+          </div>
           <div>
             <dt className="text-xs text-slate-500">{strings.pendingRequests.dueDate}</dt>
             <dd className="text-slate-900">
-              {item.dueDate ? formatDate(item.dueDate) : strings.pendingRequests.noDueDate}
+              {item.dueDate ? formatDateOnly(item.dueDate) : strings.pendingRequests.noDueDate}
             </dd>
           </div>
           <div>

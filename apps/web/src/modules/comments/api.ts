@@ -9,8 +9,12 @@ export interface Comment {
   commentableType: CommentableType;
   commentableId: string;
   authorId: string | null;
+  /** Null once the author's account is gone. */
+  author: { id: string; name: string } | null;
   body: string;
   attachmentFileId: string | null;
+  /** The file a reply carried - a pending request answered with the material, say. */
+  attachment: { id: string; originalName: string; sizeBytes: number; removed: boolean } | null;
   createdAt: string;
   updatedAt: string;
 }

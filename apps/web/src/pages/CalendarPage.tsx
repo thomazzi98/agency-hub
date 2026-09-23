@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { CompanySelect } from '../components/CompanySelect';
 import { ContentDialog } from '../components/ContentDialog';
 import { NetworkChips } from '../components/NetworkChips';
@@ -9,23 +9,28 @@ import {
   Button,
   Card,
   EmptyState,
+  Modal,
   Pagination,
   SelectField,
   Spinner,
+  TextField,
 } from '../components/ui';
 import {
   addDays,
   addMonths,
   endOfDay,
   endOfWeek,
+  formatDateTime,
   formatDayHeading,
   formatMonth,
   formatTime,
   formatWeekday,
   isSameDay,
   monthGridDays,
+  startOfDateInput,
   startOfDay,
   startOfWeek,
+  toDateInput,
 } from '../lib/dates';
 import { contentTypeLabel, productionStatusLabel, strings } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
@@ -73,6 +78,7 @@ function flagTone(item: Content): 'neutral' | 'success' | 'warning' {
 function ContentRow({
   item,
   canManage,
+  showDate = false,
   onEdit,
   onDuplicate,
   onDelete,
@@ -80,6 +86,8 @@ function ContentRow({
 }: {
   item: Content;
   canManage: boolean;
+  /** The list view spans many days, so a time on its own says nothing there. */
+  showDate?: boolean;
   onEdit: (item: Content) => void;
   onDuplicate: (item: Content) => void;
   onDelete: (item: Content) => void;
@@ -91,7 +99,10 @@ function ContentRow({
         <div className="min-w-0">
           <p className="truncate font-medium text-slate-900">{item.title}</p>
           <p className="text-xs text-slate-500">
-            {[formatTime(item.scheduledAt), contentTypeLabel(item.type)].join(' · ')}
+            {[
+              showDate ? formatDateTime(item.scheduledAt) : formatTime(item.scheduledAt),
+              contentTypeLabel(item.type),
+            ].join(' · ')}
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -125,6 +136,64 @@ function ContentRow({
   );
 }
 
+/**
+ * Where a copy goes. A date picker rather than a typed "AAAA-MM-DD" prompt: on a phone
+ * that meant typing a date on a keyboard, and the suggested date was taken from UTC,
+ * so an evening post suggested the day after the one a week later.
+ */
+function DuplicateDialog({
+  item,
+  onClose,
+  onDuplicated,
+}: {
+  item: Content;
+  onClose: () => void;
+  onDuplicated: () => void;
+}) {
+  const duplicate = useDuplicateContent();
+  const original = new Date(item.scheduledAt);
+  const [date, setDate] = useState(() => toDateInput(addDays(original, 7)));
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (duplicate.isPending || !date) return;
+
+    // Same time of day as the original, on the chosen local day.
+    const target = startOfDateInput(date);
+    target.setHours(original.getHours(), original.getMinutes(), 0, 0);
+
+    duplicate.mutate(
+      { id: item.id, scheduledAt: target.toISOString() },
+      {
+        onSuccess: () => {
+          onDuplicated();
+          onClose();
+        },
+      },
+    );
+  };
+
+  return (
+    <Modal title={strings.calendar.duplicateTitle} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {duplicate.error && <Alert tone="error">{duplicate.error.message}</Alert>}
+        <p className="text-sm text-slate-600">{strings.calendar.duplicateHint(item.title)}</p>
+        <TextField
+          label={strings.calendar.duplicateDate}
+          type="date"
+          required
+          value={date}
+          hint={strings.calendar.duplicateTimeHint(formatTime(original))}
+          onChange={(event) => setDate(event.target.value)}
+        />
+        <Button type="submit" isLoading={duplicate.isPending} disabled={!date}>
+          {strings.calendar.duplicate}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
+
 export default function CalendarPage() {
   const { data: currentUser } = useCurrentUser();
   const canManage = currentUser?.role === 'agency_admin' || currentUser?.role === 'agency_manager';
@@ -134,6 +203,7 @@ export default function CalendarPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [editing, setEditing] = useState<Content | null>(null);
+  const [duplicating, setDuplicating] = useState<Content | null>(null);
   const [creatingFor, setCreatingFor] = useState<Date | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<{
@@ -169,12 +239,11 @@ export default function CalendarPage() {
   );
 
   const summary = useContentSummary(companyId, Boolean(companyId));
-  const duplicate = useDuplicateContent();
   const remove = useDeleteContent();
 
   // A failed load can be retried; a rejected mutation cannot — see FilesPage.
   const loadError = calendar.error ?? list.error;
-  const error = duplicate.error ?? remove.error;
+  const error = remove.error;
 
   const byDay = useMemo(() => {
     const map = new Map<string, Content[]>();
@@ -188,23 +257,8 @@ export default function CalendarPage() {
   const dayItems = (day: Date) => byDay.get(startOfDay(day).toDateString()) ?? [];
 
   const handleDuplicate = (item: Content) => {
-    const suggestion = addDays(new Date(item.scheduledAt), 7);
-    const answer = window.prompt(
-      strings.calendar.duplicatePrompt,
-      suggestion.toISOString().slice(0, 10),
-    );
-    if (!answer) return;
-
-    const target = new Date(`${answer}T${new Date(item.scheduledAt).toTimeString().slice(0, 8)}`);
-    if (Number.isNaN(target.getTime())) {
-      setNotice(strings.calendar.invalidDate);
-      return;
-    }
-
-    duplicate.mutate(
-      { id: item.id, scheduledAt: target.toISOString() },
-      { onSuccess: () => setNotice(strings.calendar.duplicated) },
-    );
+    setNotice(null);
+    setDuplicating(item);
   };
 
   const handlePublication = (
@@ -247,6 +301,14 @@ export default function CalendarPage() {
             setEditing(null);
             setCreatingFor(null);
           }}
+        />
+      )}
+
+      {duplicating && (
+        <DuplicateDialog
+          item={duplicating}
+          onClose={() => setDuplicating(null)}
+          onDuplicated={() => setNotice(strings.calendar.duplicated)}
         />
       )}
 
@@ -512,6 +574,7 @@ export default function CalendarPage() {
                         <ContentRow
                           item={item}
                           canManage={canManage}
+                          showDate
                           onEdit={setEditing}
                           onDuplicate={handleDuplicate}
                           onDelete={handleDelete}

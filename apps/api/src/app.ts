@@ -64,6 +64,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
 
     const statusCode = (error as { statusCode?: number }).statusCode;
+    // The multipart parser refuses an oversized body before any route sees it, so its
+    // 413 gets the same answer the routes give for a file over a limit - not a generic
+    // "invalid request" that leaves the person guessing what was wrong.
+    if (statusCode === 413) {
+      return reply.status(413).send({
+        error: { code: 'file_too_large', message: 'O arquivo excede o tamanho máximo permitido.' },
+      });
+    }
     if (statusCode && statusCode < 500) {
       return reply.status(statusCode).send({
         error: { code: 'bad_request', message: 'Requisição inválida.' },

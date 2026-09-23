@@ -62,6 +62,7 @@ loudly at deploy time rather than quietly at first use:
 | `PASSWORD_PEPPER` (required)                   | Long and random; permanent for the life of the database.                                                                |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Its **own** pair, from `npm run push:keys --workspace=@agency-hub/api`. Empty disables push; in-app notifications still work. |
 | `BACKUP_ENCRYPTION_KEY`                        | Optional, 64 hex characters. Empty stores dumps compressed but unencrypted on the volume.                              |
+| `APP_TIMEZONE`                                 | Optional IANA zone the dashboard's "hoje", the calendar's flags and a deadline's day are measured in. Empty means `America/Sao_Paulo`; set it only if the agency works on another zone. |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_PASSWORD` | Who the first administrator is (see below). With the password set, the seed uses it instead of printing a generated one; it is temporary either way. |
 
 Point the domain's A/AAAA records at the VPS before the first deploy — Caddy asks for

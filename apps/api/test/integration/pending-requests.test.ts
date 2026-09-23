@@ -124,6 +124,9 @@ describe('creating a pending request', () => {
       createdById: world.managerA.id,
       isAwaitingRecipient: true,
       isOverdue: false,
+      // Who it waits on and who asked, by name - the screen shows both.
+      responsibleUser: { name: world.clientA.name },
+      createdBy: { name: world.managerA.name },
     });
   });
 

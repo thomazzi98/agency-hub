@@ -22,20 +22,32 @@ function invalidCredentials() {
   return unauthorized('invalid_credentials', 'E-mail ou senha inválidos.');
 }
 
-async function assertIpWithinRateLimit(db: Db, ipAddress: string): Promise<void> {
+/**
+ * Records the attempt *before* counting, and counts it among the hour's. Counting first
+ * let a burst of simultaneous requests all read the same total, all pass, and only then
+ * be recorded - so the per-IP ceiling held against a patient attacker and not against a
+ * parallel one. Returns the attempt so a success can be marked as one.
+ */
+async function reserveIpAttempt(db: Db, email: string, ipAddress: string): Promise<{ id: string }> {
   const env = getEnv();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+  const attempt = await db.loginAttempt.create({
+    data: { email, ipAddress, successful: false },
+    select: { id: true },
+  });
 
   const attempts = await db.loginAttempt.count({
     where: { ipAddress, createdAt: { gt: oneHourAgo } },
   });
 
-  if (attempts >= env.LOGIN_IP_MAX_ATTEMPTS_PER_HOUR) {
+  if (attempts > env.LOGIN_IP_MAX_ATTEMPTS_PER_HOUR) {
     throw tooManyRequests(
       'rate_limited',
       'Muitas tentativas de login a partir deste endereço. Tente novamente mais tarde.',
     );
   }
+  return attempt;
 }
 
 function lockoutUntil(consecutiveFailures: number): Date | null {
@@ -64,19 +76,51 @@ export interface LoginResult {
   actor: AuthenticatedActor;
 }
 
+/**
+ * One more consecutive failure, counted by the database itself. Reading the count,
+ * adding one here and writing it back let simultaneous wrong guesses all write the same
+ * number, so a parallel burst never reached the lockout. Shared by every place a
+ * password is checked for a signed-in account, so none of them is an unlimited oracle.
+ */
+async function recordPasswordFailure(
+  db: Db,
+  userId: string,
+): Promise<{ failures: number; lockedUntil: Date | null }> {
+  const { failedLoginAttempts } = await db.user.update({
+    where: { id: userId },
+    data: { failedLoginAttempts: { increment: 1 } },
+    select: { failedLoginAttempts: true },
+  });
+
+  const lockedUntil = lockoutUntil(failedLoginAttempts);
+  if (lockedUntil) {
+    await db.user.update({ where: { id: userId }, data: { lockedUntil } });
+  }
+  return { failures: failedLoginAttempts, lockedUntil };
+}
+
+function accountLocked() {
+  return tooManyRequests(
+    'account_locked',
+    'Conta temporariamente bloqueada por excesso de tentativas. Aguarde e tente novamente.',
+  );
+}
+
+function isLocked<T extends { lockedUntil: Date | null }>(
+  user: T,
+): user is T & { lockedUntil: Date } {
+  return user.lockedUntil !== null && user.lockedUntil > new Date();
+}
+
 export async function login(db: PrismaClient, input: LoginInput): Promise<LoginResult> {
   const email = normalizeEmail(input.email);
 
-  await assertIpWithinRateLimit(db, input.ipAddress);
-
-  const recordAttempt = (successful: boolean) =>
-    db.loginAttempt.create({ data: { email, ipAddress: input.ipAddress, successful } });
+  const attempt = await reserveIpAttempt(db, email, input.ipAddress);
 
   const user = await db.user.findUnique({ where: { email } });
 
   if (!user || user.status !== 'active') {
     await verifyAgainstDecoy(input.password);
-    await recordAttempt(false);
     await writeAuditLog(db, {
       action: AuditAction.LoginFailed,
       ipAddress: input.ipAddress,
@@ -85,8 +129,7 @@ export async function login(db: PrismaClient, input: LoginInput): Promise<LoginR
     throw invalidCredentials();
   }
 
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    await recordAttempt(false);
+  if (isLocked(user)) {
     await writeAuditLog(db, {
       actorId: user.id,
       action: AuditAction.LoginBlocked,
@@ -95,23 +138,13 @@ export async function login(db: PrismaClient, input: LoginInput): Promise<LoginR
       ipAddress: input.ipAddress,
       metadata: { lockedUntil: user.lockedUntil.toISOString() },
     });
-    throw tooManyRequests(
-      'account_locked',
-      'Conta temporariamente bloqueada por excesso de tentativas. Aguarde e tente novamente.',
-    );
+    throw accountLocked();
   }
 
   const passwordMatches = await verifyPassword(user.passwordHash, input.password);
 
   if (!passwordMatches) {
-    const failures = user.failedLoginAttempts + 1;
-    const lockedUntil = lockoutUntil(failures);
-
-    await db.user.update({
-      where: { id: user.id },
-      data: { failedLoginAttempts: failures, lockedUntil },
-    });
-    await recordAttempt(false);
+    const { failures, lockedUntil } = await recordPasswordFailure(db, user.id);
     await writeAuditLog(db, {
       actorId: user.id,
       action: lockedUntil ? AuditAction.AccountLocked : AuditAction.LoginFailed,
@@ -134,7 +167,7 @@ export async function login(db: PrismaClient, input: LoginInput): Promise<LoginR
     where: { id: user.id },
     data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
-  await recordAttempt(true);
+  await db.loginAttempt.update({ where: { id: attempt.id }, data: { successful: true } });
   await writeAuditLog(db, {
     actorId: user.id,
     action: AuditAction.LoginSucceeded,
@@ -162,7 +195,15 @@ export async function changeOwnPassword(db: Db, input: ChangePasswordInput): Pro
   const env = getEnv();
   const user = await db.user.findUniqueOrThrow({ where: { id: input.actor.userId } });
 
+  // A session is not a licence to guess the password behind it: a stolen cookie could
+  // otherwise try passwords here without limit and learn the one that also opens every
+  // other account its owner reused it on. Same counter and lockout as sign-in.
+  if (isLocked(user)) {
+    throw accountLocked();
+  }
+
   if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    await recordPasswordFailure(db, user.id);
     throw badRequest('invalid_current_password', 'A senha atual está incorreta.');
   }
 
@@ -212,17 +253,31 @@ export async function reauthenticate(
 ): Promise<void> {
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.userId } });
 
+  // Step-up exists for the moment a session may not be its owner's, which is exactly
+  // when unlimited guesses must not be on offer (see changeOwnPassword).
+  if (isLocked(user)) {
+    throw accountLocked();
+  }
+
   if (!(await verifyPassword(user.passwordHash, password))) {
+    const { failures, lockedUntil } = await recordPasswordFailure(db, user.id);
     await writeAuditLog(db, {
       actorId: user.id,
       action: AuditAction.ReauthenticationFailed,
       entityType: 'user',
       entityId: user.id,
       ipAddress,
+      metadata: { consecutiveFailures: failures, locked: lockedUntil !== null },
     });
     throw invalidCredentials();
   }
 
+  if (user.failedLoginAttempts > 0) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
   await markPasswordVerified(db, actor.sessionId);
   await writeAuditLog(db, {
     actorId: user.id,

@@ -53,10 +53,15 @@ test.describe('editorial calendar', () => {
     await dialog.getByLabel('Tipo').selectOption('reels');
     await dialog.getByRole('button', { name: 'Criar' }).click();
 
-    // The list view is the one that shows every item regardless of the visible window.
+    // The list view is the one that shows every item regardless of the visible window -
+    // and, spanning many days, it says which day each one is on.
     await page.getByRole('button', { name: 'Lista' }).click();
     await expect(page.getByText(title)).toBeVisible();
     await expect(page.getByText('Planejado').first()).toBeVisible();
+    const [year, month, day] = localDateTime(1).slice(0, 10).split('-');
+    await expect(
+      page.getByRole('listitem').filter({ hasText: title }).getByText(`${day}/${month}/${year}`),
+    ).toBeVisible();
 
     // The day view, moved to tomorrow, shows it too.
     await page.getByRole('button', { name: 'Dia' }).click();
@@ -113,12 +118,17 @@ test.describe('editorial calendar', () => {
     await page.getByRole('button', { name: 'Lista' }).click();
     await expect(page.getByText(title)).toBeVisible();
 
-    const target = new Date();
-    target.setDate(target.getDate() + 15);
-    page.once('dialog', (prompt) => void prompt.accept(target.toISOString().slice(0, 10)));
+    // A date picker in a dialog, not a typed "AAAA-MM-DD" prompt.
     await page.getByRole('button', { name: 'Duplicar' }).first().click();
+    const duplicateDialog = page.getByRole('dialog', { name: 'Duplicar conteúdo' });
+    const dateField = duplicateDialog.getByLabel('Nova data');
+    // Suggested a week after the original, in the viewer's own calendar.
+    await expect(dateField).toHaveValue(localDateTime(8).slice(0, 10));
+    await dateField.fill(localDateTime(15).slice(0, 10));
+    await duplicateDialog.getByRole('button', { name: 'Duplicar' }).click();
 
     await expect(page.getByRole('status').first()).toHaveText('Conteúdo duplicado.');
+    await expect(duplicateDialog).toHaveCount(0);
     // Two rows with the same title: the original approved, the copy back at planned.
     await expect(page.getByText(title)).toHaveCount(2);
     await expect(page.getByText('Planejado').first()).toBeVisible();

@@ -36,6 +36,8 @@ export interface ProjectInput {
 
 export interface ProjectListParams {
   page: number;
+  /** Pickers ask for the server's maximum; lists page at the default. */
+  pageSize?: number;
   companyId?: string;
   status: ProjectStatus | 'all';
   search?: string;
@@ -51,6 +53,7 @@ export function useProjects(params: ProjectListParams) {
       const envelope = await apiEnvelope<Project[]>(
         `/projects${queryString({
           page: params.page,
+          pageSize: params.pageSize,
           companyId: params.companyId,
           status: params.status,
           search: params.search,

@@ -1,6 +1,8 @@
 import {
   forwardRef,
+  useEffect,
   useId,
+  useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -310,6 +312,15 @@ export function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode
   );
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * The one dialog every screen uses, so what it gets right it gets right everywhere:
+ * Escape closes it, Tab stays inside it, focus goes back where it came from, the page
+ * behind does not scroll, and a form taller than a phone's screen scrolls within the
+ * overlay instead of being cut off above and below with no way to reach its buttons.
+ */
 export function Modal({
   title,
   children,
@@ -319,20 +330,74 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  // Read through a ref so a parent re-render never tears down and rebuilds the effect.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const returnFocusTo = document.activeElement as HTMLElement | null;
+    // The panel rather than its first field: focusing an input on open would throw a
+    // phone's keyboard over the dialog before anyone asked for it.
+    panelRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+
+      const focusable = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || active === panelRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      returnFocusTo?.focus?.();
+    };
+  }, []);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={title}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40"
     >
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-        <h2 className="mb-3 text-lg font-semibold text-slate-900">{title}</h2>
-        {children}
-        <div className="mt-4 flex justify-end">
-          <Button variant="secondary" onClick={onClose}>
-            {strings.common.close}
-          </Button>
+      <div className="flex min-h-full items-center justify-center px-4 py-6">
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg outline-none"
+        >
+          <h2 id={titleId} className="mb-3 text-lg font-semibold text-slate-900">
+            {title}
+          </h2>
+          {children}
+          <div className="mt-4 flex justify-end">
+            <Button variant="secondary" onClick={onClose}>
+              {strings.common.close}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

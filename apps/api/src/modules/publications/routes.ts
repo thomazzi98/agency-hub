@@ -37,7 +37,15 @@ const networkParamsSchema = contentParamsSchema.extend({ network: publicationNet
 const upsertSchema = z.object({
   status: publicationStatus,
   publishedAt: z.coerce.date().nullish(),
-  link: z.string().trim().url().max(2048).nullish(),
+  // A web address, not any URL: the link is rendered as an <a href> for the whole
+  // company, and `javascript:` is a URL too.
+  link: z
+    .string()
+    .trim()
+    .url()
+    .max(2048)
+    .refine((value) => /^https?:\/\//i.test(value), { message: 'must be an http(s) link' })
+    .nullish(),
   responsibleUserId: z.string().uuid().nullish(),
   notes: z.string().trim().max(2000).nullish(),
 });
@@ -128,7 +136,7 @@ export async function publicationRoutes(app: FastifyInstance): Promise<void> {
             ...publicationSelect,
             content: { select: { id: true, companyId: true, title: true, scheduledAt: true } },
           },
-          orderBy: [{ publishedAt: 'asc' }, { createdAt: 'asc' }],
+          orderBy: [{ publishedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.publication.count({ where }),

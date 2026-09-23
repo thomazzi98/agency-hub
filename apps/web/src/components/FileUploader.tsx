@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'reac
 import type Uppy from '@uppy/core';
 import { Alert, Button, Card, Spinner } from './ui';
 import { strings } from '../lib/strings';
-import { formatBytes, useUploadConfig } from '../modules/uploads/api';
+import { formatBytes, useUploadConfig, type UploadConfig } from '../modules/uploads/api';
 import { createUppy, type UploadTarget, type UploadedFile } from '../modules/uploads/uppy';
 
 type UploadState =
@@ -18,6 +18,32 @@ interface UploadRow {
 }
 
 const ACTIVE_STATES: UploadState[] = ['waiting', 'uploading', 'paused', 'processing'];
+
+function isTypeAllowed(mimeType: string, allowed: string[]): boolean {
+  const candidate = mimeType.toLowerCase();
+  return allowed.some((entry) =>
+    entry.endsWith('/*') ? candidate.startsWith(entry.slice(0, -1)) : candidate === entry,
+  );
+}
+
+/**
+ * Why a chosen file was not queued, in the person's language. Uppy's own restriction
+ * messages are English ("You can only upload: image/*, video/*, …"), and they were shown
+ * as they came.
+ */
+function describeRejection(
+  file: { name?: string; size?: number | null; type?: string },
+  config: UploadConfig,
+): string {
+  const name = file.name ?? 'arquivo';
+  if ((file.size ?? 0) > config.maxFileBytes) {
+    return strings.uploads.tooLarge(name, formatBytes(config.maxFileBytes));
+  }
+  if (!isTypeAllowed(file.type || 'application/octet-stream', config.allowedMimeTypes)) {
+    return strings.uploads.typeNotAllowed(name);
+  }
+  return strings.uploads.alreadyQueued(name);
+}
 
 /**
  * Drives Uppy headlessly: the file bytes go straight to storage, and this component
@@ -59,9 +85,10 @@ export function FileUploader({
 
   useEffect(() => {
     if (!config.data) return;
+    const uploadConfig = config.data;
 
     const uppy = createUppy(
-      config.data,
+      uploadConfig,
       () => targetRef.current,
       (file) => onUploadedRef.current(file),
     );
@@ -99,8 +126,8 @@ export function FileUploader({
       updateRow(file.id, { state: 'failed', error: uploadError.message });
     });
 
-    uppy.on('restriction-failed', (_file, restrictionError) => {
-      setError(restrictionError.message);
+    uppy.on('restriction-failed', (file) => {
+      if (file) setError(describeRejection(file, uploadConfig));
     });
 
     uppyRef.current = uppy as unknown as Uppy<never, never>;
@@ -131,13 +158,35 @@ export function FileUploader({
       }
       try {
         uppy.addFile({ name: file.name, type: file.type, data: file });
-      } catch (addError) {
-        setError(addError instanceof Error ? addError.message : strings.app.genericError);
+      } catch {
+        // A restriction, or the same file already in the queue: Uppy throws either way,
+        // in English, so the reason is worked out here instead.
+        setError(
+          config.data
+            ? describeRejection({ name: file.name, size: file.size, type: file.type }, config.data)
+            : strings.app.genericError,
+        );
       }
     }
     // Lets the same file be chosen again after a cancel.
     event.target.value = '';
   };
+
+  /**
+   * Closing or reloading the tab mid-transfer abandons it, and a large file on mobile
+   * data is a long transfer. The browser asks first, in its own words.
+   */
+  const hasActiveUploads = rows.some((row) => ACTIVE_STATES.includes(row.state));
+  useEffect(() => {
+    if (!hasActiveUploads) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers need a value here to show the prompt at all.
+      event.returnValue = strings.uploads.leaveWarning;
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasActiveUploads]);
 
   const pause = (row: UploadRow) => {
     uppyRef.current?.pauseResume(row.id);

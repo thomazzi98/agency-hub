@@ -14,6 +14,7 @@ import {
   TextAreaField,
   TextField,
 } from '../components/ui';
+import { formatDateOnly } from '../lib/dates';
 import { strings, topicEmptyLabel, topicPriorityLabel, topicStatusLabel } from '../lib/strings';
 import { useCurrentUser } from '../modules/auth/session';
 import { useCompanyMembers } from '../modules/companies/api';
@@ -34,10 +35,6 @@ const views: { value: TopicView; label: string }[] = [
 ];
 
 const priorities: TopicPriority[] = ['low', 'medium', 'high'];
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(value));
-}
 
 function NewTopicDialog({ onClose }: { onClose: () => void }) {
   const create = useCreateTopic();
@@ -226,7 +223,7 @@ export default function TopicsPage() {
                     {[
                       topicPriorityLabel(topic.priority),
                       topic.dueDate
-                        ? `${strings.topics.dueDate}: ${formatDate(topic.dueDate)}`
+                        ? `${strings.topics.dueDate}: ${formatDateOnly(topic.dueDate)}`
                         : null,
                       strings.topics.replyCount(topic._count?.replies ?? 0),
                     ]

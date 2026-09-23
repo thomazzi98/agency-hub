@@ -78,7 +78,7 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
         tx.company.findMany({
           where,
           select: companySelect,
-          orderBy: { [query.sort]: query.order },
+          orderBy: [{ [query.sort]: query.order }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.company.count({ where }),

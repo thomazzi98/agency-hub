@@ -141,6 +141,40 @@ test.describe('uploading', () => {
     expect(stored.status()).toBe(200);
     expect((await stored.body()).byteLength).toBe(32 * 1024);
   });
+
+  test('finds a file by name wherever it was filed', async ({ page }, testInfo) => {
+    await signIn(page, admin(testInfo).email);
+    const companyName = unique('Cliente', testInfo);
+    await createCompany(page, companyName);
+    await openFilesFor(page, companyName);
+
+    // Filed two levels away from where the search starts.
+    await page.getByLabel('Nome da pasta').fill('Fotos');
+    await page.getByRole('button', { name: 'Nova pasta' }).click();
+    await page
+      .getByRole('listitem')
+      .filter({ hasText: 'Fotos' })
+      .getByRole('button', { name: 'Abrir' })
+      .click();
+    await page.setInputFiles('#file-uploader-input', {
+      name: 'fachada-principal.jpg',
+      mimeType: 'image/jpeg',
+      buffer: bytes(16 * 1024),
+    });
+    await expect(page.getByText('Concluído', { exact: true })).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'Raiz' }).click();
+    await page.getByLabel('Buscar arquivo pelo nome').fill('fachada');
+    await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+
+    await expect(page.getByText(/Resultados para "fachada"/)).toBeVisible();
+    await expect(
+      page.getByRole('listitem').filter({ hasText: 'fachada-principal.jpg' }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Limpar busca' }).click();
+    await expect(page.getByRole('navigation', { name: 'Caminho' })).toBeVisible();
+  });
 });
 
 test.describe('deleting a file someone else uploaded', () => {
@@ -197,6 +231,13 @@ test.describe('deleting a file someone else uploaded', () => {
 
     await page.getByRole('link', { name: 'Solicitações de exclusão', exact: true }).click();
     await expect(page.getByText('Material enviado por engano.')).toBeVisible();
+    // What is to be deleted, where, and at whose request - not just "Arquivo".
+    const pendingRequest = page
+      .getByRole('listitem')
+      .filter({ hasText: 'Material enviado por engano.' });
+    await expect(pendingRequest.getByText('material.jpg')).toBeVisible();
+    await expect(pendingRequest.getByText(companyName)).toBeVisible();
+    await expect(pendingRequest.getByText(contributor.name)).toBeVisible();
 
     await page.getByLabel('Observações da análise').fill('Confirmado com a equipe.');
     page.once('dialog', (confirmation) => void confirmation.accept());

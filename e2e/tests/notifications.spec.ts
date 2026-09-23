@@ -46,7 +46,7 @@ test.describe('notifications', () => {
     await expect(page.getByRole('status').first()).toHaveText('Acesso concedido.');
 
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     await page.getByRole('button', { name: 'Nova pendência' }).click();
     const dialog = page.getByRole('dialog', { name: 'Nova pendência' });
@@ -210,7 +210,7 @@ test.describe('the notification centre', () => {
 
     // Two events, so "all" means more than one.
     await page.getByRole('link', { name: 'Pendências', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Pendências' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pendências', exact: true })).toBeVisible();
     await page.getByLabel('Empresa').selectOption({ label: companyName });
     for (const title of [unique('Primeira', testInfo), unique('Segunda', testInfo)]) {
       await page.getByRole('button', { name: 'Nova pendência' }).click();

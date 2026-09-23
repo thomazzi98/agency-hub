@@ -31,17 +31,34 @@ const updateSchema = z.object({
 const idParamsSchema = z.object({ id: z.string().uuid() });
 
 /**
- * A membership change alters what its user may reach, and the actor's authorized
- * company set is resolved per request from these rows. Dropping the affected user's
- * sessions makes the change take effect immediately rather than at session expiry —
- * which is what "a revoked membership immediately removes all access" requires
- * (06-permissions-and-authorization.md).
+ * Taking access away signs the person out everywhere, so nothing a screen already
+ * loaded - a list, a detail, an upload in flight - outlives it: "a revoked membership
+ * immediately removes all access" (06-permissions-and-authorization.md), and a fresh
+ * sign-in is the unambiguous way to say so.
+ *
+ * Giving access does not. The actor's companies and overrides are re-read from these
+ * rows on every request (shared/actor.ts), so a grant is in effect on the very next
+ * one without it - and signing someone out because they were *given* a client used to
+ * kill whatever they were doing, a phone upload included.
  */
-async function applyImmediately(
+async function signOutAfterAccessRemoved(
   tx: Parameters<typeof revokeAllSessionsForUser>[0],
   userId: string,
 ) {
   await revokeAllSessionsForUser(tx, userId);
+}
+
+/** Whether an edit takes anything away: the membership itself, or an override. */
+function removesAccess(body: {
+  status?: 'active' | 'revoked';
+  canManageCampaigns?: boolean;
+  canDeleteCompanyFiles?: boolean;
+}): boolean {
+  return (
+    body.status === 'revoked' ||
+    body.canManageCampaigns === false ||
+    body.canDeleteCompanyFiles === false
+  );
 }
 
 export async function membershipRoutes(app: FastifyInstance): Promise<void> {
@@ -107,7 +124,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
             select: membershipSelect,
           });
 
-      await applyImmediately(tx, body.userId);
+      // A grant takes nothing away, so the person's sessions carry on (see above).
       await writeAuditLog(tx, {
         actorId: actor.userId,
         companyId: body.companyId,
@@ -148,7 +165,9 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         select: membershipSelect,
       });
 
-      await applyImmediately(tx, existing.userId);
+      if (removesAccess(body)) {
+        await signOutAfterAccessRemoved(tx, existing.userId);
+      }
       await writeAuditLog(tx, {
         actorId: actor.userId,
         companyId: existing.companyId,
@@ -185,7 +204,7 @@ export async function membershipRoutes(app: FastifyInstance): Promise<void> {
         select: membershipSelect,
       });
 
-      await applyImmediately(tx, existing.userId);
+      await signOutAfterAccessRemoved(tx, existing.userId);
       await writeAuditLog(tx, {
         actorId: actor.userId,
         companyId: existing.companyId,

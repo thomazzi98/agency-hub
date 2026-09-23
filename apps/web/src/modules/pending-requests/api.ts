@@ -18,6 +18,9 @@ export interface PendingRequest {
   description: string;
   responsibleUserId: string;
   createdById: string | null;
+  responsibleUser: { name: string };
+  /** Null once the account that opened it is gone. */
+  createdBy: { name: string } | null;
   dueDate: string | null;
   priority: Priority;
   status: PendingRequestStatus;

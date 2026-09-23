@@ -602,6 +602,92 @@ describe('the overdue sweep', () => {
     });
   });
 
+  it('does not tell the same person again once they have read it', async () => {
+    await withSystemScope(prisma, (tx) =>
+      tx.content.create({
+        data: {
+          companyId: world.companyA.id,
+          title: 'Post esquecido',
+          scheduledAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          productionStatus: 'planned',
+          responsibleUserId: world.clientA.id,
+        },
+      }),
+    );
+
+    await notifyOverdueContent(prisma);
+    await systemRead((tx) =>
+      tx.notification.updateMany({
+        where: { recipientId: world.clientA.id },
+        data: { readAt: new Date() },
+      }),
+    );
+    // The next hourly run used to open a fresh unread one, every hour, for a month.
+    await notifyOverdueContent(prisma);
+
+    const rows = await notificationsOf(world.clientA.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.readAt).not.toBeNull();
+  });
+
+  it('leaves an unread one as it was, so the push sweep does not see it as new', async () => {
+    await withSystemScope(prisma, (tx) =>
+      tx.content.create({
+        data: {
+          companyId: world.companyA.id,
+          title: 'Post parado',
+          scheduledAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          productionStatus: 'in_production',
+          responsibleUserId: world.clientA.id,
+        },
+      }),
+    );
+
+    await notifyOverdueContent(prisma);
+    const [first] = await notificationsOf(world.clientA.id);
+    await notifyOverdueContent(prisma);
+    const [second] = await notificationsOf(world.clientA.id);
+
+    expect(second?.createdAt.getTime()).toBe(first?.createdAt.getTime());
+  });
+
+  it('tells them again when the item is rescheduled and then missed again', async () => {
+    const content = await withSystemScope(prisma, (tx) =>
+      tx.content.create({
+        data: {
+          companyId: world.companyA.id,
+          title: 'Post remarcado',
+          scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+          productionStatus: 'planned',
+          responsibleUserId: world.clientA.id,
+        },
+      }),
+    );
+    // Told three days ago, about the date it had then; read since.
+    await systemRead((tx) =>
+      tx.notification.create({
+        data: {
+          recipientId: world.clientA.id,
+          companyId: world.companyA.id,
+          type: 'content.overdue',
+          title: 'Conteúdo atrasado',
+          message: 'Antigo',
+          relatedType: 'content',
+          relatedId: content.id,
+          readAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        },
+      }),
+    );
+
+    const result = await notifyOverdueContent(prisma);
+
+    expect(result.notified).toBe(1);
+    const rows = await notificationsOf(world.clientA.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.readAt).toBeNull();
+  });
+
   it('leaves finished and future content alone', async () => {
     await withSystemScope(prisma, (tx) =>
       tx.content.createMany({

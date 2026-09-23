@@ -427,6 +427,30 @@ describe('POST /api/auth/change-password', () => {
     expect(stillValid.statusCode).toBe(200);
     expect(revoked.statusCode).toBe(401);
   });
+
+  it('counts wrong current passwords toward the lockout', async () => {
+    await createTestUser({ email: 'change-guess@example.com' });
+    const cookie = await loginAs(app, 'change-guess@example.com');
+    const attempt = (currentPassword: string) =>
+      app.inject(
+        authed(
+          {
+            method: 'POST',
+            url: '/api/auth/change-password',
+            payload: { currentPassword, newPassword: 'nova-senha-forte-1' },
+          },
+          cookie,
+        ),
+      );
+
+    for (let guess = 0; guess < 5; guess += 1) {
+      expect((await attempt('nao-e-essa-123')).statusCode).toBe(400);
+    }
+
+    const locked = await attempt(DEFAULT_TEST_PASSWORD);
+    expect(locked.statusCode).toBe(429);
+    expect(locked.json().error.code).toBe('account_locked');
+  });
 });
 
 describe('POST /api/auth/reauthenticate', () => {
@@ -470,6 +494,81 @@ describe('POST /api/auth/reauthenticate', () => {
 
     expect(response.statusCode).toBe(401);
     expect(await auditActions()).toContain('auth.reauthentication_failed');
+  });
+
+  // A session - a stolen cookie, an unattended tab - must not be an unlimited oracle for
+  // the password behind it.
+  it('locks the account after too many wrong passwords, as sign-in does', async () => {
+    await createTestUser({ email: 'reauth-guess@example.com' });
+    const cookie = await loginAs(app, 'reauth-guess@example.com');
+    const attempt = (password: string) =>
+      app.inject(
+        authed({ method: 'POST', url: '/api/auth/reauthenticate', payload: { password } }, cookie),
+      );
+
+    for (let guess = 0; guess < 5; guess += 1) {
+      expect((await attempt('senha-errada-123')).statusCode).toBe(401);
+    }
+
+    const locked = await attempt(DEFAULT_TEST_PASSWORD);
+    expect(locked.statusCode).toBe(429);
+    expect(locked.json().error.code).toBe('account_locked');
+  });
+});
+
+describe('guessing under concurrency', () => {
+  it('locks the account even when the wrong guesses all arrive at once', async () => {
+    await createTestUser({ email: 'burst@example.com' });
+
+    // Distinct addresses, so the per-IP ceiling is not what stops them.
+    const answers = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        app.inject(
+          withIp(
+            {
+              method: 'POST',
+              url: '/api/auth/login',
+              payload: { email: 'burst@example.com', password: 'senha-errada-123' },
+            },
+            uniqueIp(),
+          ),
+        ),
+      ),
+    );
+
+    // Every guess was either counted or turned away because the lock had already landed:
+    // none slipped past both, as eight writes of the same stale "count + 1" did. How many
+    // are checked before the fifth failure sets the lock is up to the scheduler, so only
+    // the sum is fixed - asserting eight counted failed on a slower machine.
+    const turnedAway = answers.filter((answer) => answer.json().error?.code === 'account_locked');
+    const stored = await prisma.user.findUniqueOrThrow({ where: { email: 'burst@example.com' } });
+    expect(stored.failedLoginAttempts + turnedAway.length).toBe(8);
+    expect(stored.failedLoginAttempts).toBeGreaterThanOrEqual(5);
+    expect(stored.lockedUntil).not.toBeNull();
+  });
+
+  it('holds the per-IP ceiling against a burst, not only against a patient attacker', async () => {
+    const ip = uniqueIp();
+
+    const answers = await Promise.all(
+      Array.from({ length: 26 }, (_, index) =>
+        app.inject(
+          withIp(
+            {
+              method: 'POST',
+              url: '/api/auth/login',
+              payload: { email: `burst-${index}@example.com`, password: 'x' },
+            },
+            ip,
+          ),
+        ),
+      ),
+    );
+
+    const limited = answers.filter((answer) => answer.json().error?.code === 'rate_limited');
+    // Twenty an hour: counting before recording let all twenty-six through.
+    expect(answers.length - limited.length).toBeLessThanOrEqual(20);
+    expect(limited.length).toBeGreaterThanOrEqual(6);
   });
 });
 

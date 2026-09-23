@@ -8,6 +8,7 @@ import { clientIp } from '../../shared/request-context.js';
 import { authorizedCompanyIds, requireCompanyAccess } from '../../shared/permissions.js';
 import { paginated, paginationArgs, paginationSchema } from '../../shared/pagination.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
+import { assertResponsibleHasAccess } from '../../shared/references.js';
 import type { AuthenticatedActor } from '../../shared/actor.js';
 import type { Prisma, TopicStatus } from '@prisma/client';
 
@@ -153,7 +154,7 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
         tx.topic.findMany({
           where,
           select: { ...topicSelect, _count: { select: { replies: true } } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.topic.count({ where }),
@@ -167,7 +168,16 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
     '/topics/:id',
     tenantScoped(async ({ tx, actor, request }) => {
       const params = parseInput(idParamsSchema, request.params);
-      const topic = await findTopicInScope(tx, params.id, authorizedCompanyIds(actor));
+      const companyIds = authorizedCompanyIds(actor);
+      const topic = await tx.topic.findFirst({
+        where: { id: params.id, ...(companyIds === null ? {} : { companyId: { in: companyIds } }) },
+        select: {
+          ...topicSelect,
+          // Who raised it and who it is waiting on - the two people the thread is between.
+          creator: { select: { name: true } },
+          responsibleUser: { select: { name: true } },
+        },
+      });
 
       if (!topic) {
         throw notFound('not_found', 'Tópico não encontrado.');
@@ -175,7 +185,15 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
 
       const replies = await tx.topicReply.findMany({
         where: { topicId: topic.id },
-        select: { id: true, authorId: true, body: true, createdAt: true },
+        select: {
+          id: true,
+          authorId: true,
+          // A conversation between the agency and a client reads as one only when each
+          // reply says who wrote it.
+          author: { select: { name: true } },
+          body: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: 'asc' },
       });
 
@@ -192,20 +210,7 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
 
       // The responsible party must actually have access to the company, or the topic
       // would sit forever in a queue they cannot see.
-      const membership = await tx.companyMembership.findFirst({
-        where: { userId: body.responsibleUserId, companyId: body.companyId, status: 'active' },
-        select: { id: true },
-      });
-      const responsibleIsAdmin = await tx.user.findFirst({
-        where: { id: body.responsibleUserId, role: 'agency_admin', status: 'active' },
-        select: { id: true },
-      });
-      if (!membership && !responsibleIsAdmin) {
-        throw unprocessable(
-          'responsible_without_access',
-          'O responsável escolhido não tem acesso a esta empresa.',
-        );
-      }
+      await assertResponsibleHasAccess(tx, body.companyId, body.responsibleUserId);
 
       if ((body.relatedType && !body.relatedId) || (!body.relatedType && body.relatedId)) {
         throw unprocessable('incomplete_relation', 'Informe o tipo e o item relacionado.');
@@ -264,6 +269,13 @@ export async function topicRoutes(app: FastifyInstance): Promise<void> {
       const isCreator = existing.creatorId === actor.userId;
       if (!isCreator && actor.role !== 'agency_admin') {
         throw forbidden('forbidden', 'Apenas quem criou o tópico pode alterá-lo.');
+      }
+
+      // The same rule creation applies: reassigning to someone who cannot open the
+      // company would park the topic in a queue nobody sees, and an id that is not a
+      // user at all would otherwise surface as a foreign-key error.
+      if (body.responsibleUserId) {
+        await assertResponsibleHasAccess(tx, existing.companyId, body.responsibleUserId);
       }
 
       const topic = await tx.topic.update({

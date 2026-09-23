@@ -1,11 +1,23 @@
-import type { ReactNode } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Suspense, useEffect, type ReactNode } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from './ErrorBoundary';
+import { Spinner } from './ui';
 import { strings } from '../lib/strings';
-import { useCurrentUser, useLogout } from '../modules/auth/session';
+import { preloadPages } from '../routes/pages';
+import { useCurrentUser, useLogout, type CurrentUser } from '../modules/auth/session';
 import { useBrand } from '../modules/branding/context';
 import { NotificationBell } from './NotificationBell';
 
-const navigation = [
+type Role = CurrentUser['role'];
+
+const navigation: {
+  to: string;
+  label: string;
+  end: boolean;
+  adminOnly: boolean;
+  /** Roles the section has nothing for; hiding it beats a screen that is always empty. */
+  hiddenFor?: Role[];
+}[] = [
   { to: '/', label: strings.home.title, end: true, adminOnly: false },
   { to: '/empresas', label: strings.companies.title, end: false, adminOnly: false },
   { to: '/projetos', label: strings.projects.title, end: false, adminOnly: false },
@@ -13,7 +25,14 @@ const navigation = [
   { to: '/publicacoes', label: strings.publications.title, end: false, adminOnly: false },
   { to: '/arquivos', label: strings.files.title, end: false, adminOnly: false },
   { to: '/pendencias', label: strings.pendingRequests.title, end: false, adminOnly: false },
-  { to: '/campanhas', label: strings.campaigns.title, end: false, adminOnly: false },
+  // A contributor sees no campaigns (09-campaign-management.md#permissions).
+  {
+    to: '/campanhas',
+    label: strings.campaigns.title,
+    end: false,
+    adminOnly: false,
+    hiddenFor: ['contributor'],
+  },
   { to: '/topicos', label: strings.topics.title, end: false, adminOnly: false },
   { to: '/exclusoes', label: strings.deletionRequests.title, end: false, adminOnly: true },
   { to: '/usuarios', label: strings.users.title, end: false, adminOnly: true },
@@ -26,6 +45,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: currentUser } = useCurrentUser();
   const brand = useBrand();
   const logout = useLogout();
+  const location = useLocation();
+
+  // Signed in and on screen: fetch the other sections' code in the background, so the
+  // first tap on each of them is not a wait (routes/pages.ts).
+  useEffect(() => preloadPages(), []);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -41,13 +65,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           {/* A phone cannot fit every section in one row, and a wrapping nav makes the
               sticky header eat the screen. The strip scrolls sideways instead — the one
-              place horizontal scrolling is the right answer. */}
+              place horizontal scrolling is the right answer. From a tablet up the nav has
+              its own row and wraps: an admin has fourteen sections, and kept on one line
+              beside the logo they ran past the edge of the page, pushing the last ones
+              ("Identidade visual", "Backup do banco") off screen behind a sideways
+              scroll of the whole page. */}
           <nav
-            className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto px-1 sm:order-2 sm:w-auto sm:overflow-visible"
+            className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto px-1 sm:flex-wrap sm:overflow-visible"
             aria-label="Principal"
           >
             {navigation
               .filter((item) => !item.adminOnly || currentUser?.role === 'agency_admin')
+              .filter((item) => !currentUser || !item.hiddenFor?.includes(currentUser.role))
               .map((item) => (
                 <NavLink
                   key={item.to}
@@ -64,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               ))}
           </nav>
 
-          <div className="order-2 ml-auto flex items-center gap-3 sm:order-3">
+          <div className="order-2 ml-auto flex items-center gap-3">
             {currentUser && (
               <span className="hidden text-sm text-slate-500 sm:inline">{currentUser.email}</span>
             )}
@@ -87,7 +116,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+        {/* Leaving a screen that failed clears the failure; see ErrorBoundary. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Suspense
+            fallback={
+              <div role="status" className="flex items-center gap-2 text-sm text-slate-500">
+                <Spinner className="h-4 w-4" />
+                {strings.app.loading}
+              </div>
+            }
+          >
+            {children}
+          </Suspense>
+        </ErrorBoundary>
+      </main>
     </div>
   );
 }

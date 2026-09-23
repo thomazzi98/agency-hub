@@ -315,7 +315,7 @@ export default function CampaignsPage() {
                     <div className="min-w-0">
                       <Link
                         to={`/campanhas/${campaign.id}`}
-                        className="truncate font-medium text-slate-900 underline-offset-2 hover:underline"
+                        className="block truncate font-medium text-slate-900 underline-offset-2 hover:underline"
                       >
                         {campaign.name}
                       </Link>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Checkbox, Spinner } from './ui';
 import { formatDateTime } from '../lib/dates';
+import { describeDevice } from '../lib/device';
 import { notificationTypeLabel, strings } from '../lib/strings';
 import {
   useNotificationPreferences,
@@ -98,8 +99,11 @@ export function PushSettings() {
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-slate-800">
-                        {device.userAgent ?? device.fingerprint}
+                      <p
+                        className="truncate text-sm text-slate-800"
+                        title={device.userAgent ?? undefined}
+                      >
+                        {describeDevice(device.userAgent) ?? device.userAgent ?? device.fingerprint}
                       </p>
                       <p className="text-xs text-slate-500">{formatDateTime(device.createdAt)}</p>
                     </div>

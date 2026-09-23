@@ -70,6 +70,8 @@ export interface CompanyDashboard {
     plannedContent: number;
     inProduction: number;
     openRequests: number;
+    /** Every request waiting on the reader; `myRequests` below lists only the first few. */
+    myRequests: number;
     activeProjects: number;
     pendingPublications: number;
     unreadNotifications: number;

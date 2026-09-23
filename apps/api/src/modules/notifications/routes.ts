@@ -69,7 +69,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
         tx.notification.findMany({
           where,
           select: notificationSelect,
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.notification.count({ where }),

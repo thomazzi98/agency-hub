@@ -189,6 +189,36 @@ describe('branding assets', () => {
     expect(served.headers['content-type']).toBe('image/png');
     expect(served.headers['cache-control']).toContain('immutable');
     expect(served.rawPayload.byteLength).toBe(png.byteLength);
+    // Opened as a page rather than through <img>, an asset - an SVG logo above all - is
+    // sandboxed: it shares this origin with the session and must run nothing.
+    expect(served.headers['x-content-type-options']).toBe('nosniff');
+    expect(served.headers['content-security-policy']).toContain('sandbox');
+    expect(served.headers['content-security-policy']).toContain("default-src 'none'");
+  });
+
+  it('answers a file over the upload ceiling as too large, not as a malformed request', async () => {
+    const { cookie } = await adminCookie('brand-ceiling@example.com');
+    // Past the multipart parser's own 4 MB ceiling, which refuses it before the route.
+    const form = multipartBody({
+      filename: 'login.jpg',
+      contentType: 'image/jpeg',
+      content: syntheticBytes(5 * 1024 * 1024),
+    });
+
+    const response = await app.inject(
+      authed(
+        {
+          method: 'POST',
+          url: '/api/branding/assets/loginImage',
+          payload: form.payload,
+          headers: form.headers,
+        },
+        cookie,
+      ),
+    );
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json().error.code).toBe('file_too_large');
   });
 
   it('accepts its own asset path back through the regular update endpoint', async () => {

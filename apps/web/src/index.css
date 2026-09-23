@@ -28,4 +28,8 @@ body {
     'Segoe UI',
     sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* A pasted link or a file_name_like_this has nowhere to wrap, and on a phone it ran
+     past the edge and took the whole page sideways with it. This breaks such a word
+     only when it cannot fit its line; ordinary text wraps exactly as before. */
+  overflow-wrap: break-word;
 }

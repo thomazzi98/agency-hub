@@ -99,10 +99,20 @@ export async function brandingRoutes(app: FastifyInstance): Promise<void> {
       throw notFound('not_found', 'Arquivo não encontrado.');
     }
 
-    return reply
-      .header('content-type', object.mimeType)
-      .header('cache-control', 'public, max-age=31536000, immutable')
-      .send(Buffer.from(object.body));
+    return (
+      reply
+        .header('content-type', object.mimeType)
+        .header('cache-control', 'public, max-age=31536000, immutable')
+        // A logo may be an SVG, and an SVG opened as a page runs its scripts - on this
+        // origin, next to the session. Rendered through <img> none of this applies; opened
+        // directly, the document is sandboxed and allowed nothing but its own styles.
+        .header('x-content-type-options', 'nosniff')
+        .header(
+          'content-security-policy',
+          "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+        )
+        .send(Buffer.from(object.body))
+    );
   });
 
   app.post(

@@ -110,7 +110,7 @@ export async function fileRoutes(app: FastifyInstance): Promise<void> {
         tx.file.findMany({
           where,
           select: fileSelect,
-          orderBy: { [query.sort]: query.order },
+          orderBy: [{ [query.sort]: query.order }, { id: 'asc' }],
           ...paginationArgs(query),
         }),
         tx.file.count({ where }),

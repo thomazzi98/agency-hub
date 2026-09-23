@@ -98,7 +98,14 @@ export async function apiEnvelope<TData>(
     );
   }
 
-  return { data: payload?.data as TData, meta: payload?.meta };
+  // A 2xx that is not the API's envelope - a proxy's HTML page, a server restarting
+  // behind the dev proxy - is a failure to report, not `undefined` to hand a screen
+  // that expects rows.
+  if (!payload || !('data' in payload)) {
+    throw new ApiError(response.status, 'internal_error');
+  }
+
+  return { data: payload.data as TData, meta: payload.meta };
 }
 
 export async function apiRequest<TData>(

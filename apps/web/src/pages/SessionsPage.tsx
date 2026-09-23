@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Spinner } from '../components/ui';
 import { apiRequest } from '../lib/api';
+import { formatDateTime } from '../lib/dates';
+import { describeDevice } from '../lib/device';
 import { strings } from '../lib/strings';
+import { CHANGE_PASSWORD_PATH } from '../routes/ProtectedRoute';
 
 interface SessionSummary {
   id: string;
@@ -14,12 +18,6 @@ interface SessionSummary {
 }
 
 const sessionsQueryKey = ['sessions'] as const;
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
 
 export default function SessionsPage() {
   const queryClient = useQueryClient();
@@ -79,7 +77,7 @@ export default function SessionsPage() {
         <Alert tone="error">{(revoke.error ?? revokeAll.error)?.message}</Alert>
       )}
       {revokeAll.isSuccess && (
-        <Alert tone="success">{`${revokeAll.data.revokedCount} sessão(ões) encerrada(s).`}</Alert>
+        <Alert tone="success">{strings.sessions.revokedCount(revokeAll.data.revokedCount)}</Alert>
       )}
 
       {sessions.isPending ? (
@@ -93,11 +91,22 @@ export default function SessionsPage() {
             <li key={session.id}>
               <Card className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">
-                    {session.userAgent ?? session.ipAddress ?? session.id}
+                  <p
+                    className="truncate text-sm font-medium text-slate-900"
+                    title={session.userAgent ?? undefined}
+                  >
+                    {describeDevice(session.userAgent) ??
+                      session.userAgent ??
+                      session.ipAddress ??
+                      session.id}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {`${strings.sessions.lastActive}: ${formatDateTime(session.lastActiveAt)}`}
+                    {[
+                      `${strings.sessions.lastActive}: ${formatDateTime(session.lastActiveAt)}`,
+                      session.ipAddress ? `IP ${session.ipAddress}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                 </div>
 
@@ -128,6 +137,22 @@ export default function SessionsPage() {
       {!sessions.isPending && others.length === 0 && (
         <p className="text-sm text-slate-500">{strings.sessions.empty}</p>
       )}
+
+      {/* Account security lives together: the sessions, and the password behind them. */}
+      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">
+            {strings.sessions.passwordTitle}
+          </h2>
+          <p className="text-sm text-slate-500">{strings.sessions.passwordHint}</p>
+        </div>
+        <Link
+          to={CHANGE_PASSWORD_PATH}
+          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
+        >
+          {strings.sessions.changePassword}
+        </Link>
+      </Card>
     </div>
   );
 }

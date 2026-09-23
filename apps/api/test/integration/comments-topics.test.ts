@@ -156,6 +156,54 @@ describe('comments', () => {
     ]);
   });
 
+  it('says who wrote each comment and carries the file a reply attached', async () => {
+    const project = await seedProject(world.companyA.id);
+    const attachment = await seedFile(world.companyA.id);
+    const cookie = await sessionFor(world.clientA);
+
+    await app.inject(
+      authed(
+        {
+          method: 'POST',
+          url: '/api/comments',
+          payload: {
+            commentableType: 'project',
+            commentableId: project.id,
+            body: 'Segue o material.',
+            attachmentFileId: attachment.id,
+          },
+        },
+        cookie,
+      ),
+    );
+
+    const list = () =>
+      app.inject(
+        authed(
+          {
+            method: 'GET',
+            url: `/api/comments?commentableType=project&commentableId=${project.id}`,
+          },
+          cookie,
+        ),
+      );
+
+    const [comment] = (await list()).json().data;
+    expect(comment.author).toEqual({ id: world.clientA.id, name: world.clientA.name });
+    expect(comment.attachment).toEqual({
+      id: attachment.id,
+      originalName: attachment.originalName,
+      sizeBytes: 1024,
+      removed: false,
+    });
+
+    // A file deleted since is reported as gone, not offered for download.
+    await withSystemScope(prisma, (tx) =>
+      tx.file.update({ where: { id: attachment.id }, data: { deletedAt: new Date() } }),
+    );
+    expect((await list()).json().data[0].attachment.removed).toBe(true);
+  });
+
   it('refuses to comment on another company resource', async () => {
     const foreign = await seedProject(world.companyB.id);
     const cookie = await sessionFor(world.contributorA);
@@ -455,6 +503,48 @@ describe('follow-up topics', () => {
     expect(replies.map((reply) => reply.body)).toEqual(['Primeira', 'Segunda']);
     expect(replies[0]?.authorId).toBe(world.contributorA.id);
     expect(replies[1]?.authorId).toBe(world.managerA.id);
+    // Names, not only ids: the screen has to say who wrote what.
+    expect(detail.json().data.replies[0].author).toEqual({ name: world.contributorA.name });
+    expect(detail.json().data.creator).toEqual({ name: world.managerA.name });
+    expect(detail.json().data.responsibleUser).toEqual({ name: world.contributorA.name });
+  });
+
+  it('refuses to reassign a topic to someone who cannot reach the company', async () => {
+    const creatorCookie = await sessionFor(world.managerA);
+    const created = await createTopic(creatorCookie);
+    const topicId = created.json().data.id as string;
+
+    const [foreign, unknown] = await Promise.all([
+      app.inject(
+        authed(
+          {
+            method: 'PATCH',
+            url: `/api/topics/${topicId}`,
+            payload: { responsibleUserId: world.managerB.id },
+          },
+          creatorCookie,
+        ),
+      ),
+      app.inject(
+        authed(
+          {
+            method: 'PATCH',
+            url: `/api/topics/${topicId}`,
+            payload: { responsibleUserId: crypto.randomUUID() },
+          },
+          creatorCookie,
+        ),
+      ),
+    ]);
+
+    // The same rule creation applies - and an id that is no user at all is refused the
+    // same way instead of surfacing as a foreign-key error.
+    for (const response of [foreign, unknown]) {
+      expect(response.statusCode).toBe(422);
+      expect(response.json().error.code).toBe('responsible_without_access');
+    }
+    const stored = await systemRead((tx) => tx.topic.findUniqueOrThrow({ where: { id: topicId } }));
+    expect(stored.responsibleUserId).toBe(world.contributorA.id);
   });
 
   it('refuses a reply from someone who is not part of the conversation', async () => {

@@ -10,10 +10,11 @@ import {
 } from '../../shared/permissions.js';
 import { isAgencyAdmin, type AuthenticatedActor } from '../../shared/actor.js';
 import { tenantScoped, type ScopedDb } from '../../shared/tenant-scope.js';
+import { businessDayBounds, businessToday } from '../../shared/business-day.js';
 import { OVERDUE_STATUSES } from '../calendar/content.js';
 import { AWAITING_RECIPIENT_STATUSES, UNFINISHED_STATUSES } from '../pending-requests/status.js';
 import { PENDING_STATUSES } from '../publications/publication.js';
-import { CAMPAIGN_ATTENTION_STATUSES } from '../campaigns/campaign.js';
+import { CAMPAIGN_ATTENTION_STATUSES, campaignVisibilityScope } from '../campaigns/campaign.js';
 
 /**
  * Read-only aggregation over the modules that own the data
@@ -141,12 +142,6 @@ const requestCard = {
   responsibleUserId: true,
 } as const;
 
-/** Start of today, UTC — the same boundary the calendar's own flags use. */
-function dayBounds(now: Date) {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  return { startOfToday: start, startOfTomorrow: new Date(start.getTime() + 86_400_000) };
-}
-
 async function recentActivity(tx: ScopedDb, companyIds: string[] | null, companyId?: string) {
   return tx.auditLog.findMany({
     where: {
@@ -180,22 +175,39 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
       const companyIds = authorizedCompanyIds(actor);
       const now = new Date();
-      const { startOfToday, startOfTomorrow } = dayBounds(now);
+      const { startOfToday, startOfTomorrow } = businessDayBounds(now);
+      // `due_date` is a date column: it is compared with today's date, not an instant.
+      const today = businessToday(now);
 
       const content = contentWhere(filters, companyIds);
       const requests = requestWhere(filters, companyIds);
 
+      const todayWhere = and(content, { scheduledAt: { gte: startOfToday, lt: startOfTomorrow } });
+      const overdueWhere = and(content, {
+        scheduledAt: { lt: now },
+        productionStatus: { in: OVERDUE_STATUSES },
+      });
+      const requestsOverdueWhere = and(requests, {
+        dueDate: { lt: today },
+        status: { in: UNFINISHED_STATUSES },
+      });
+
       // Counted in the database and issued together: a dashboard that fetched rows to
       // tally them in memory is exactly what 17-performance-requirements.md rules out.
+      // The panels show the first few rows; the tiles count all of them - a tile that
+      // read the length of its panel could never say more than five.
       const [
         activeCompanies,
         recentFiles,
         todayContent,
+        todayCount,
         overdueContent,
+        overdueCount,
         inProductionContent,
         awaitingApproval,
         requestsAwaitingClient,
         requestsOverdue,
+        requestsOverdueCount,
         pendingPublications,
         unreadNotifications,
         activity,
@@ -221,32 +233,29 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           take: PANEL_SIZE,
         }),
         tx.content.findMany({
-          where: and(content, { scheduledAt: { gte: startOfToday, lt: startOfTomorrow } }),
+          where: todayWhere,
           select: contentCard,
           orderBy: { scheduledAt: 'asc' },
           take: PANEL_SIZE,
         }),
+        tx.content.count({ where: todayWhere }),
         tx.content.findMany({
-          where: and(content, {
-            scheduledAt: { lt: now },
-            productionStatus: { in: OVERDUE_STATUSES },
-          }),
+          where: overdueWhere,
           select: contentCard,
           orderBy: { scheduledAt: 'asc' },
           take: PANEL_SIZE,
         }),
+        tx.content.count({ where: overdueWhere }),
         tx.content.count({ where: and(content, { productionStatus: 'in_production' }) }),
         tx.content.count({ where: and(content, { productionStatus: 'in_review' }) }),
         tx.pendingRequest.count({ where: and(requests, { status: 'awaiting_client' }) }),
         tx.pendingRequest.findMany({
-          where: and(requests, {
-            dueDate: { lt: startOfToday },
-            status: { in: UNFINISHED_STATUSES },
-          }),
+          where: requestsOverdueWhere,
           select: requestCard,
           orderBy: { dueDate: 'asc' },
           take: PANEL_SIZE,
         }),
+        tx.pendingRequest.count({ where: requestsOverdueWhere }),
         tx.publication.count({
           where: {
             status: { in: PENDING_STATUSES },
@@ -277,12 +286,12 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           todayContent,
           overdueContent,
           counts: {
-            today: todayContent.length,
-            overdue: overdueContent.length,
+            today: todayCount,
+            overdue: overdueCount,
             inProduction: inProductionContent,
             awaitingApproval,
             requestsAwaitingClient,
-            requestsOverdue: requestsOverdue.length,
+            requestsOverdue: requestsOverdueCount,
             pendingPublications,
             campaignsNeedingAttention,
             unreadNotifications,
@@ -305,8 +314,13 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       requireCompanyAccess(actor, query.companyId);
 
       const now = new Date();
-      const { startOfToday } = dayBounds(now);
+      const { startOfToday } = businessDayBounds(now);
       const companyScope = { companyId: query.companyId };
+      const myRequestsWhere = {
+        ...companyScope,
+        responsibleUserId: actor.userId,
+        status: { in: AWAITING_RECIPIENT_STATUSES },
+      };
 
       const [
         plannedContent,
@@ -315,6 +329,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         recentFiles,
         openRequests,
         myRequests,
+        myRequestsCount,
         activeProjects,
         pendingPublications,
         unreadNotifications,
@@ -347,15 +362,12 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           where: { ...companyScope, status: { in: UNFINISHED_STATUSES } },
         }),
         tx.pendingRequest.findMany({
-          where: {
-            ...companyScope,
-            responsibleUserId: actor.userId,
-            status: { in: AWAITING_RECIPIENT_STATUSES },
-          },
+          where: myRequestsWhere,
           select: requestCard,
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
           take: PANEL_SIZE,
         }),
+        tx.pendingRequest.count({ where: myRequestsWhere }),
         tx.project.count({ where: { ...companyScope, status: 'active' } }),
         tx.publication.count({
           where: {
@@ -366,15 +378,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         tx.notification.count({
           where: { recipientId: actor.userId, readAt: null, companyId: query.companyId },
         }),
-        // The client only counts what the agency chose to show them.
-        tx.campaign.count({
-          where: {
-            ...companyScope,
-            ...(actor.role === 'agency_admin' || actor.role === 'agency_manager'
-              ? {}
-              : { visibleToClient: true }),
-          },
-        }),
+        // The client only counts what the agency chose to show them, and a contributor
+        // sees no campaigns at all - the same rule the campaign list applies.
+        tx.campaign.count({ where: { AND: [companyScope, campaignVisibilityScope(actor)] } }),
       ]);
 
       return {
@@ -384,6 +390,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
             plannedContent,
             inProduction,
             openRequests,
+            myRequests: myRequestsCount,
             activeProjects,
             pendingPublications,
             unreadNotifications,

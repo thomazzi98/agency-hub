@@ -323,34 +323,45 @@ export default function UserFormPage() {
                     </Button>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <MembershipToggle
-                      label={strings.memberships.canManageCampaigns}
-                      checked={membership.canManageCampaigns}
-                      disabled={updateMembership.isPending}
-                      onToggle={async (next) => {
-                        await updateMembership.mutateAsync({
-                          id: membership.id,
-                          canManageCampaigns: next,
-                        });
-                        setSaved(strings.memberships.updated);
-                        await existing.refetch();
-                      }}
-                    />
-                    <MembershipToggle
-                      label={strings.memberships.canDeleteCompanyFiles}
-                      checked={membership.canDeleteCompanyFiles}
-                      disabled={updateMembership.isPending}
-                      onToggle={async (next) => {
-                        await updateMembership.mutateAsync({
-                          id: membership.id,
-                          canDeleteCompanyFiles: next,
-                        });
-                        setSaved(strings.memberships.updated);
-                        await existing.refetch();
-                      }}
-                    />
-                  </div>
+                  {/* The overrides only ever decide anything for an agency_manager
+                      (shared/permissions.ts); offered to anyone else they were switches
+                      that silently did nothing. */}
+                  {existing.data?.role === 'agency_manager' ? (
+                    <div className="flex flex-col gap-2">
+                      <MembershipToggle
+                        label={strings.memberships.canManageCampaigns}
+                        checked={membership.canManageCampaigns}
+                        disabled={updateMembership.isPending}
+                        onToggle={async (next) => {
+                          await updateMembership.mutateAsync({
+                            id: membership.id,
+                            canManageCampaigns: next,
+                          });
+                          setSaved(strings.memberships.updated);
+                          await existing.refetch();
+                        }}
+                      />
+                      <MembershipToggle
+                        label={strings.memberships.canDeleteCompanyFiles}
+                        checked={membership.canDeleteCompanyFiles}
+                        disabled={updateMembership.isPending}
+                        onToggle={async (next) => {
+                          await updateMembership.mutateAsync({
+                            id: membership.id,
+                            canDeleteCompanyFiles: next,
+                          });
+                          setSaved(strings.memberships.updated);
+                          await existing.refetch();
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      {existing.data?.role === 'agency_admin'
+                        ? strings.memberships.overridesAdminHasAll
+                        : strings.memberships.overridesOnlyForManagers}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
