@@ -521,7 +521,7 @@ describe('guessing under concurrency', () => {
     await createTestUser({ email: 'burst@example.com' });
 
     // Distinct addresses, so the per-IP ceiling is not what stops them.
-    await Promise.all(
+    const answers = await Promise.all(
       Array.from({ length: 8 }, () =>
         app.inject(
           withIp(
@@ -536,9 +536,14 @@ describe('guessing under concurrency', () => {
       ),
     );
 
-    // Each failure counted, not eight writes of the same stale "count + 1".
+    // Every guess was either counted or turned away because the lock had already landed:
+    // none slipped past both, as eight writes of the same stale "count + 1" did. How many
+    // are checked before the fifth failure sets the lock is up to the scheduler, so only
+    // the sum is fixed - asserting eight counted failed on a slower machine.
+    const turnedAway = answers.filter((answer) => answer.json().error?.code === 'account_locked');
     const stored = await prisma.user.findUniqueOrThrow({ where: { email: 'burst@example.com' } });
-    expect(stored.failedLoginAttempts).toBe(8);
+    expect(stored.failedLoginAttempts + turnedAway.length).toBe(8);
+    expect(stored.failedLoginAttempts).toBeGreaterThanOrEqual(5);
     expect(stored.lockedUntil).not.toBeNull();
   });
 
